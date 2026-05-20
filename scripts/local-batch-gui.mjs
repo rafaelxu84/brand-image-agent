@@ -1,0 +1,299 @@
+#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import http from "node:http";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, "..");
+const host = process.env.BATCH_GUI_HOST || "127.0.0.1";
+const port = Number(process.env.BATCH_GUI_PORT || 4180);
+
+let currentJob = null;
+const logs = [];
+
+function addLog(line) {
+  const text = String(line).trimEnd();
+  if (!text) return;
+  logs.push(`[${new Date().toLocaleTimeString()}] ${text}`);
+  if (logs.length > 500) logs.splice(0, logs.length - 500);
+}
+
+function sendJson(res, status, data) {
+  const body = JSON.stringify(data);
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(body)
+  });
+  res.end(body);
+}
+
+async function readJson(req) {
+  let body = "";
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > 1024 * 1024) throw new Error("Request body too large.");
+  }
+  return JSON.parse(body || "{}");
+}
+
+function argList(config) {
+  const args = [
+    path.join(rootDir, "scripts/local-batch-worker.mjs"),
+    "--input",
+    config.input,
+    "--logo",
+    config.logo,
+    "--output",
+    config.output,
+    "--quality",
+    config.quality || "medium",
+    "--concurrency",
+    String(config.concurrency || 1),
+    "--delay-ms",
+    String(config.delayMs || 1500)
+  ];
+  if (config.retryFailed) args.push("--retry-failed");
+  if (config.dryRun) args.push("--dry-run");
+  if (config.brand) args.push("--brand", config.brand);
+  if (config.instructions) args.push("--instructions", config.instructions);
+  return args;
+}
+
+async function readManifestSummary(outputDir) {
+  if (!outputDir) return null;
+  const manifestPath = path.join(outputDir, "_manifest.json");
+  try {
+    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+    const records = Object.values(manifest.files || {});
+    return {
+      total: records.length,
+      completed: records.filter((item) => item.status === "completed").length,
+      failed: records.filter((item) => item.status === "failed").length,
+      running: records.filter((item) => item.status === "running").length,
+      updatedAt: manifest.updatedAt || manifest.createdAt || null,
+      failedItems: Object.entries(manifest.files || {})
+        .filter(([, item]) => item.status === "failed")
+        .slice(0, 50)
+        .map(([name, item]) => ({ name, error: item.error || "" }))
+    };
+  } catch {
+    return null;
+  }
+}
+
+function startJob(config) {
+  if (currentJob?.running) throw new Error("A batch is already running.");
+  if (!config.input || !config.logo || !config.output) {
+    throw new Error("Input folder, logo path, and output folder are required.");
+  }
+
+  logs.length = 0;
+  addLog("Starting local batch worker...");
+  const env = { ...process.env };
+  if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
+  const child = spawn(process.execPath, argList(config), {
+    cwd: rootDir,
+    env,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  currentJob = {
+    running: true,
+    pid: child.pid,
+    config: { ...config, apiKey: config.apiKey ? "provided" : "" },
+    startedAt: new Date().toISOString(),
+    exitCode: null
+  };
+
+  child.stdout.on("data", (chunk) => {
+    for (const line of String(chunk).split(/\r?\n/)) addLog(line);
+  });
+  child.stderr.on("data", (chunk) => {
+    for (const line of String(chunk).split(/\r?\n/)) addLog(line);
+  });
+  child.on("exit", (code, signal) => {
+    currentJob.running = false;
+    currentJob.exitCode = code;
+    currentJob.signal = signal;
+    currentJob.finishedAt = new Date().toISOString();
+    addLog(`Worker finished with code=${code} signal=${signal || "none"}.`);
+  });
+}
+
+function stopJob() {
+  if (!currentJob?.running || !currentJob.pid) return false;
+  try {
+    process.kill(currentJob.pid, "SIGTERM");
+    addLog("Stop requested. Waiting for worker to exit...");
+    return true;
+  } catch (error) {
+    addLog(`Stop failed: ${error.message}`);
+    return false;
+  }
+}
+
+const html = String.raw`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Batch Console</title>
+    <style>
+      :root { color-scheme: dark; --bg:#10130f; --panel:#181d17; --line:#384234; --text:#f4f5ed; --muted:#aeb7a6; --accent:#d5f05c; --danger:#ff8a65; }
+      * { box-sizing:border-box; }
+      body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      main { width:min(1280px,100%); margin:0 auto; padding:20px; display:grid; grid-template-columns:380px minmax(0,1fr); gap:18px; }
+      section, aside { border:1px solid var(--line); background:var(--panel); padding:18px; }
+      h1 { margin:0 0 16px; font-size:26px; }
+      label { display:grid; gap:7px; margin-bottom:12px; color:var(--muted); font-size:13px; font-weight:700; }
+      input, select, textarea, button { font:inherit; }
+      input, select, textarea { width:100%; border:1px solid var(--line); border-radius:8px; background:#10150f; color:var(--text); padding:10px 11px; }
+      textarea { resize:vertical; }
+      button { min-height:42px; border:1px solid transparent; border-radius:8px; padding:0 14px; background:var(--accent); color:#171a12; font-weight:800; cursor:pointer; }
+      button.secondary { background:transparent; border-color:var(--line); color:var(--text); }
+      button.danger { background:transparent; border-color:var(--danger); color:var(--danger); }
+      .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px; }
+      .stat { border:1px solid var(--line); padding:12px; background:#111710; }
+      .stat strong { display:block; font-size:24px; }
+      .stat span { color:var(--muted); font-size:12px; }
+      pre { min-height:420px; max-height:60vh; overflow:auto; margin:0; padding:14px; border:1px solid var(--line); background:#0b0f0a; color:#d8decf; white-space:pre-wrap; }
+      .hint { color:var(--muted); font-size:13px; line-height:1.45; }
+      @media (max-width:900px){ main { grid-template-columns:1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <aside>
+        <h1>Local Batch Console</h1>
+        <label>Source image folder <input id="input" placeholder="/Users/rafa/Downloads/source-images" /></label>
+        <label>Logo file path <input id="logo" placeholder="/Users/rafa/Downloads/logo.png" /></label>
+        <label>Output folder <input id="output" placeholder="/Users/rafa/Downloads/cover-output" /></label>
+        <label>OpenAI API key <input id="apiKey" type="password" placeholder="Optional if exported in terminal" /></label>
+        <label>Brand name <input id="brand" placeholder="Pragmatic Play" /></label>
+        <label>Quality
+          <select id="quality">
+            <option value="low">Low - draft</option>
+            <option value="medium" selected>Medium - balanced</option>
+            <option value="high">High - final</option>
+          </select>
+        </label>
+        <label>Concurrency <input id="concurrency" type="number" min="1" max="4" value="1" /></label>
+        <label>Delay ms <input id="delayMs" type="number" min="0" value="1500" /></label>
+        <label>Extra instructions <textarea id="instructions" rows="4"></textarea></label>
+        <label><span><input id="retryFailed" type="checkbox" /> Retry failed only</span></label>
+        <label><span><input id="dryRun" type="checkbox" /> Dry run</span></label>
+        <div class="actions">
+          <button id="start">Start</button>
+          <button id="stop" class="danger">Stop</button>
+        </div>
+        <p class="hint">Tip: keep concurrency at 1 for 600+ images. You can close and reopen this page; the worker writes progress to _manifest.json.</p>
+      </aside>
+      <section>
+        <div class="stats">
+          <div class="stat"><strong id="completed">0</strong><span>Completed</span></div>
+          <div class="stat"><strong id="failed">0</strong><span>Failed</span></div>
+          <div class="stat"><strong id="running">0</strong><span>Running</span></div>
+          <div class="stat"><strong id="total">0</strong><span>Total seen</span></div>
+        </div>
+        <p id="state" class="hint">Idle.</p>
+        <pre id="logs"></pre>
+      </section>
+    </main>
+    <script>
+      const ids = ["input","logo","output","apiKey","brand","quality","concurrency","delayMs","instructions","retryFailed","dryRun"];
+      const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+      const logs = document.getElementById("logs");
+      const state = document.getElementById("state");
+      const statIds = ["completed","failed","running","total"];
+      const stats = Object.fromEntries(statIds.map(id => [id, document.getElementById(id)]));
+      for (const id of ids) {
+        const saved = localStorage.getItem("batch." + id);
+        if (saved !== null) {
+          if (el[id].type === "checkbox") el[id].checked = saved === "true";
+          else el[id].value = saved;
+        }
+        el[id].addEventListener("input", () => localStorage.setItem("batch." + id, el[id].type === "checkbox" ? el[id].checked : el[id].value));
+      }
+      function payload() {
+        return {
+          input: el.input.value.trim(),
+          logo: el.logo.value.trim(),
+          output: el.output.value.trim(),
+          apiKey: el.apiKey.value.trim(),
+          brand: el.brand.value.trim(),
+          quality: el.quality.value,
+          concurrency: Number(el.concurrency.value || 1),
+          delayMs: Number(el.delayMs.value || 1500),
+          instructions: el.instructions.value.trim(),
+          retryFailed: el.retryFailed.checked,
+          dryRun: el.dryRun.checked
+        };
+      }
+      async function post(url, body = {}) {
+        const res = await fetch(url, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Request failed");
+        return data;
+      }
+      document.getElementById("start").onclick = async () => {
+        try { await post("/api/start", payload()); await refresh(); }
+        catch (error) { alert(error.message); }
+      };
+      document.getElementById("stop").onclick = async () => {
+        try { await post("/api/stop"); await refresh(); }
+        catch (error) { alert(error.message); }
+      };
+      async function refresh() {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+        state.textContent = data.job?.running ? "Running pid " + data.job.pid : (data.job ? "Stopped. Exit code " + data.job.exitCode : "Idle.");
+        logs.textContent = (data.logs || []).join("\\n");
+        logs.scrollTop = logs.scrollHeight;
+        const summary = data.summary || {};
+        stats.completed.textContent = summary.completed || 0;
+        stats.failed.textContent = summary.failed || 0;
+        stats.running.textContent = summary.running || 0;
+        stats.total.textContent = summary.total || 0;
+      }
+      setInterval(refresh, 2000);
+      refresh();
+    </script>
+  </body>
+</html>`;
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, `http://localhost:${port}`);
+    if (req.method === "GET" && url.pathname === "/") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(html);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/status") {
+      const summary = await readManifestSummary(currentJob?.config?.output);
+      sendJson(res, 200, { job: currentJob, logs, summary });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/start") {
+      startJob(await readJson(req));
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/stop") {
+      sendJson(res, 200, { ok: stopJob() });
+      return;
+    }
+    sendJson(res, 404, { error: "Not found" });
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Request failed" });
+  }
+});
+
+server.listen(port, host, () => {
+  console.log(`Local batch GUI: http://${host}:${port}`);
+});

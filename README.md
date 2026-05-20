@@ -19,13 +19,33 @@ Then open `http://localhost:4173/public/`.
 
 ## Local batch worker for hundreds of images
 
-For 600+ images, use the local worker instead of keeping a browser tab alive. It processes a folder one image at a time, writes completed covers to disk, and saves `_manifest.json` so it can resume after interruption.
+For 600+ images, use the local GUI/worker instead of keeping the online browser tab alive. It processes a folder one image at a time, writes completed covers to disk, and saves `_manifest.json` so it can resume after interruption.
 
 Install dependencies once:
 
 ```bash
 npm install
 ```
+
+### GUI mode
+
+Start the local control panel:
+
+```bash
+npm run batch:gui
+```
+
+Open:
+
+```text
+http://localhost:4180
+```
+
+Fill in the source image folder, logo path, output folder, quality, and optional API key, then click `Start`.
+
+The GUI shows live logs and completed/failed counts. `Stop` safely stops the worker; rerun with `Retry failed only` to retry failures.
+
+### CLI mode
 
 Run a batch:
 
