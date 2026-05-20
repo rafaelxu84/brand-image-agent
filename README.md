@@ -30,6 +30,12 @@ The API uses the Responses API image generation tool with uploaded source image 
 
 ## Deploy
 
+### Online demo
+
+GitHub Pages publishes the static canvas generator from `public/`:
+
+https://rafaelxu84.github.io/brand-image-agent/
+
 ### Vercel deployment
 
 ```bash
@@ -51,4 +57,4 @@ git commit -m "Add brand image agent"
 gh repo create brand-image-agent --private --source=. --remote=origin --push
 ```
 
-GitHub Pages can host the static canvas generator only if this repository is public or your GitHub plan supports Pages for private repositories. The AI enhancement API needs Vercel or another serverless host.
+The AI enhancement API needs Vercel or another serverless host because GitHub Pages is static.
