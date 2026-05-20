@@ -59,15 +59,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const payload = await readJson(req);
+    const apiKey = process.env.OPENAI_API_KEY || payload.apiKey;
     if (!apiKey) {
       res.status(501).json({
-        error: "OPENAI_API_KEY is not configured. Use the canvas generator or add the key in your host."
+        error: "OPENAI_API_KEY is not configured. Add it in Vercel or enter a temporary API key in the UI."
       });
       return;
     }
 
-    const payload = await readJson(req);
     assertDataUrl(payload.sourceImage, "sourceImage");
     assertDataUrl(payload.logoImage, "logoImage");
     if (payload.referenceImage) {

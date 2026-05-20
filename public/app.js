@@ -16,6 +16,7 @@ const els = {
   footerRatio: document.querySelector("#footerRatio"),
   logoScale: document.querySelector("#logoScale"),
   instructions: document.querySelector("#instructions"),
+  apiKey: document.querySelector("#apiKey"),
   canvasBtn: document.querySelector("#canvasBtn"),
   batchBtn: document.querySelector("#batchBtn"),
   aiBtn: document.querySelector("#aiBtn"),
@@ -291,6 +292,7 @@ async function generateAiSelected() {
         sourceImage,
         logoImage: state.logoUrl,
         referenceImage: referenceOutput.outputUrl,
+        apiKey: els.apiKey.value.trim(),
         quality: "high"
       })
     });
