@@ -30,6 +30,14 @@ The API uses the Responses API image generation tool with uploaded source image 
 
 ## Deploy
 
+### Static GitHub Pages
+
+The repo includes a GitHub Pages workflow that publishes the `public/` app on every push to `main`.
+
+The static deployment supports the browser canvas batch generator. The AI enhancement button needs the serverless API below.
+
+### Full Vercel deployment
+
 ```bash
 npm i -g vercel
 vercel
