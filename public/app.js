@@ -34,6 +34,12 @@ const els = {
 
 const isStaticDemo = location.hostname.endsWith("github.io");
 const MAX_AI_PAYLOAD_CHARS = 3.7 * 1024 * 1024;
+const DESIGN_SIZE = { width: 400, height: 533 };
+const DESIGN_FOOTER_HEIGHT = 116;
+const DESIGN_TITLE_MAX_WIDTH = 360;
+const DESIGN_TITLE_BOTTOM_Y = DESIGN_SIZE.height - 120;
+const DESIGN_LOGO_LEFT = 40;
+const DESIGN_LOGO_MAX_WIDTH = 230;
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
@@ -85,6 +91,16 @@ async function compressImageForApi(source, maxSide, mime = "image/jpeg", quality
   return canvas.toDataURL(mime, quality);
 }
 
+async function resizeDataUrl(dataUrl, size = DESIGN_SIZE) {
+  const img = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  ctx.drawImage(img, 0, 0, size.width, size.height);
+  return canvas.toDataURL("image/png", 0.96);
+}
+
 async function readJsonResponse(response) {
   const text = await response.text();
   try {
@@ -134,11 +150,7 @@ function drawContain(ctx, img, x, y, width, height, alignY = 0.46) {
 }
 
 function getOutputSize() {
-  const width = Math.max(400, Math.min(2400, Number(els.exportWidth.value) || 1200));
-  return {
-    width,
-    height: Math.round((width * 533) / 400)
-  };
+  return { ...DESIGN_SIZE };
 }
 
 async function generateCanvasOutput(file, previewOnly = false, options = {}) {
@@ -150,8 +162,8 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   ]);
   const sourceImg = await loadImage(sourceUrl);
   const size = options.size || (previewOnly ? { width: 400, height: 533 } : getOutputSize());
-  const footerRatio = Math.max(0.14, Math.min(0.34, Number(els.footerRatio.value) / 100));
-  const footerH = Math.round(size.height * footerRatio);
+  const scale = size.width / DESIGN_SIZE.width;
+  const footerH = Math.round(DESIGN_FOOTER_HEIGHT * scale);
   const canvas = previewOnly ? els.previewCanvas : document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   canvas.width = size.width;
@@ -165,9 +177,10 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   ctx.restore();
 
   if (options.protectArtwork) {
-    const artTop = Math.round(size.height * 0.02);
-    const artHeight = Math.round(size.height - footerH * 0.28 - artTop);
-    drawContain(ctx, sourceImg, 0, artTop, size.width, artHeight, 0.38);
+    const artTop = Math.round(8 * scale);
+    const titleBottomY = Math.round(DESIGN_TITLE_BOTTOM_Y * scale);
+    const artHeight = Math.round(titleBottomY - artTop + 28 * scale);
+    drawContain(ctx, sourceImg, 0, artTop, size.width, artHeight, 0.5);
   } else {
     drawHeightFit(ctx, sourceImg, size.width, size.height);
   }
@@ -192,13 +205,13 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, size.width, size.height);
 
-  const maxLogoW = size.width * (Number(els.logoScale.value) / 100);
-  const maxLogoH = footerH * 0.3;
+  const maxLogoW = DESIGN_LOGO_MAX_WIDTH * scale;
+  const maxLogoH = footerH * 0.72;
   const logoScale = Math.min(maxLogoW / logoImg.naturalWidth, maxLogoH / logoImg.naturalHeight);
   const logoW = logoImg.naturalWidth * logoScale;
   const logoH = logoImg.naturalHeight * logoScale;
-  const logoX = size.width * 0.075;
-  const logoY = size.height - footerH * 0.78;
+  const logoX = DESIGN_LOGO_LEFT * scale;
+  const logoY = size.height - footerH + (footerH - logoH) / 2;
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.42)";
   ctx.shadowBlur = size.width * 0.018;
@@ -462,7 +475,7 @@ async function generateAiForFile(file) {
       compressImageForApi(file, 1280, "image/jpeg", 0.84),
       compressImageForApi(state.logoUrl, 512, "image/png"),
       generateCanvasOutput(file, false, {
-        size: { width: 640, height: 853 },
+        size: { width: 400, height: 533 },
         mime: "image/jpeg",
         quality: 0.8,
         protectArtwork: true
@@ -471,6 +484,8 @@ async function generateAiForFile(file) {
 
   const guideText = [
     "Use the third reference image as the exact cover layout guide.",
+    "Follow the exact 400x533 coordinate standard from the guide. Game title visual block max width is 360px, and the title bottom should align around y=413px, exactly 120px above the canvas bottom.",
+    "The logo must be in the bottom 116px area, vertically centered inside that area, with a 40px left margin and maximum visual width 230px.",
     "Keep all important source artwork visible: top text, multipliers, upper decorations, edge/corner characters, side creatures, main subject, and full game title.",
     "Do not zoom in or crop the original information. If space is tight, zoom out and extend the environment/background.",
     "Improve the lower mask so it feels like natural smoke, shadow, or lighting from the original image.",
@@ -503,12 +518,13 @@ async function generateAiForFile(file) {
   const data = await readJsonResponse(response);
   if (!response.ok) throw new Error(data.error || "AI generation failed.");
 
+  const finalImage = await resizeDataUrl(data.image);
   return {
     name: `${file.name.replace(/\.[^.]+$/, "")}-ai`,
     sourceUrl: sourceImage,
-    outputUrl: data.image,
-    width: 1024,
-    height: 1536,
+    outputUrl: finalImage,
+    width: DESIGN_SIZE.width,
+    height: DESIGN_SIZE.height,
     revisedPrompt: data.revisedPrompt || null
   };
 }
