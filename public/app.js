@@ -17,6 +17,7 @@ const els = {
   logoScale: document.querySelector("#logoScale"),
   instructions: document.querySelector("#instructions"),
   canvasBtn: document.querySelector("#canvasBtn"),
+  batchBtn: document.querySelector("#batchBtn"),
   aiBtn: document.querySelector("#aiBtn"),
   downloadAllBtn: document.querySelector("#downloadAllBtn"),
   status: document.querySelector("#status"),
@@ -75,6 +76,14 @@ function drawCover(ctx, img, x, y, width, height) {
   ctx.drawImage(img, x + rect.x, y + rect.y, rect.width, rect.height);
 }
 
+function drawHeightFit(ctx, img, width, height) {
+  const scale = height / img.naturalHeight;
+  const imageW = img.naturalWidth * scale;
+  const imageH = height;
+  const x = (width - imageW) / 2;
+  ctx.drawImage(img, x, 0, imageW, imageH);
+}
+
 function getOutputSize() {
   const width = Math.max(400, Math.min(2400, Number(els.exportWidth.value) || 1200));
   return {
@@ -94,7 +103,6 @@ async function generateCanvasOutput(file, previewOnly = false) {
   const size = previewOnly ? { width: 400, height: 533 } : getOutputSize();
   const footerRatio = Math.max(0.14, Math.min(0.34, Number(els.footerRatio.value) / 100));
   const footerH = Math.round(size.height * footerRatio);
-  const heroH = size.height - footerH;
   const canvas = previewOnly ? els.previewCanvas : document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   canvas.width = size.width;
@@ -103,25 +111,25 @@ async function generateCanvasOutput(file, previewOnly = false) {
   ctx.clearRect(0, 0, size.width, size.height);
 
   ctx.save();
-  ctx.filter = `blur(${Math.round(size.width * 0.026)}px) saturate(1.2)`;
+  ctx.filter = `blur(${Math.round(size.width * 0.02)}px) saturate(1.12)`;
   drawCover(ctx, sourceImg, -size.width * 0.04, -size.height * 0.04, size.width * 1.08, size.height * 1.08);
   ctx.restore();
 
-  drawCover(ctx, sourceImg, 0, 0, size.width, heroH + Math.round(size.height * 0.04));
+  drawHeightFit(ctx, sourceImg, size.width, size.height);
 
-  const fade = ctx.createLinearGradient(0, heroH - size.height * 0.13, 0, size.height);
+  const fade = ctx.createLinearGradient(0, size.height - footerH * 1.55, 0, size.height);
   fade.addColorStop(0, "rgba(10, 10, 8, 0)");
-  fade.addColorStop(0.5, "rgba(20, 15, 10, 0.72)");
-  fade.addColorStop(1, "rgba(6, 8, 12, 0.94)");
+  fade.addColorStop(0.52, "rgba(20, 15, 10, 0.66)");
+  fade.addColorStop(1, "rgba(6, 8, 12, 0.95)");
   ctx.fillStyle = fade;
-  ctx.fillRect(0, Math.max(0, heroH - size.height * 0.13), size.width, size.height);
+  ctx.fillRect(0, Math.max(0, size.height - footerH * 1.55), size.width, size.height);
 
   const vignette = ctx.createRadialGradient(
     size.width / 2,
-    size.height * 0.42,
+    size.height * 0.45,
     size.width * 0.18,
     size.width / 2,
-    size.height * 0.52,
+    size.height * 0.5,
     size.width * 0.78
   );
   vignette.addColorStop(0, "rgba(255, 255, 255, 0)");
@@ -130,12 +138,12 @@ async function generateCanvasOutput(file, previewOnly = false) {
   ctx.fillRect(0, 0, size.width, size.height);
 
   const maxLogoW = size.width * (Number(els.logoScale.value) / 100);
-  const maxLogoH = footerH * 0.45;
+  const maxLogoH = footerH * 0.38;
   const logoScale = Math.min(maxLogoW / logoImg.naturalWidth, maxLogoH / logoImg.naturalHeight);
   const logoW = logoImg.naturalWidth * logoScale;
   const logoH = logoImg.naturalHeight * logoScale;
-  const logoX = (size.width - logoW) / 2;
-  const logoY = heroH + (footerH - logoH) * 0.58;
+  const logoX = size.width * 0.1;
+  const logoY = size.height - footerH * 0.56;
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.42)";
   ctx.shadowBlur = size.width * 0.018;
@@ -237,6 +245,23 @@ async function generateBatch() {
   }
 }
 
+async function expandSelected() {
+  try {
+    const file = state.files[state.selectedIndex];
+    if (!file) throw new Error("Select a source image first.");
+    if (!state.logoUrl) throw new Error("Upload a logo first.");
+
+    setStatus("Expanding selected image...");
+    const output = await generateCanvasOutput(file);
+    state.outputs.unshift(output);
+    renderResults();
+    showOutput(output);
+    setStatus("Selected image expanded.");
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
 async function generateAiSelected() {
   try {
     const file = state.files[state.selectedIndex];
@@ -299,7 +324,8 @@ for (const input of [els.exportWidth, els.footerRatio, els.logoScale]) {
   input.addEventListener("input", () => selectImage(state.selectedIndex));
 }
 
-els.canvasBtn.addEventListener("click", generateBatch);
+els.canvasBtn.addEventListener("click", expandSelected);
+els.batchBtn.addEventListener("click", generateBatch);
 els.aiBtn.addEventListener("click", generateAiSelected);
 els.downloadAllBtn.addEventListener("click", () => {
   state.outputs.forEach((item) => downloadImage(item.outputUrl, `${item.name}-portrait.png`));
