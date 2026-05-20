@@ -31,6 +31,7 @@ const els = {
 };
 
 const isStaticDemo = location.hostname.endsWith("github.io");
+const MAX_AI_PAYLOAD_CHARS = 3.7 * 1024 * 1024;
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
@@ -58,6 +59,40 @@ function loadImage(src) {
     img.onerror = () => reject(new Error("Could not load image."));
     img.src = src;
   });
+}
+
+async function compressImageForApi(source, maxSide, mime = "image/jpeg", quality = 0.84) {
+  const src = source instanceof File ? await fileToDataUrl(source) : source;
+  const img = await loadImage(src);
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = width;
+  canvas.height = height;
+
+  if (mime === "image/jpeg") {
+    ctx.fillStyle = "#111111";
+    ctx.fillRect(0, 0, width, height);
+  }
+  ctx.drawImage(img, 0, 0, width, height);
+
+  return canvas.toDataURL(mime, quality);
+}
+
+async function readJsonResponse(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const cleanText = text.trim() || response.statusText || "Request failed";
+    return {
+      error: cleanText.startsWith("Request Entity")
+        ? "The image request is too large. The app now compresses images automatically; try a smaller source image or logo if this persists."
+        : cleanText
+    };
+  }
 }
 
 function coverRect(sourceW, sourceH, destW, destH) {
@@ -93,7 +128,7 @@ function getOutputSize() {
   };
 }
 
-async function generateCanvasOutput(file, previewOnly = false) {
+async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   if (!state.logoUrl) throw new Error("Upload a logo first.");
 
   const [sourceUrl, logoImg] = await Promise.all([
@@ -101,7 +136,7 @@ async function generateCanvasOutput(file, previewOnly = false) {
     loadImage(state.logoUrl)
   ]);
   const sourceImg = await loadImage(sourceUrl);
-  const size = previewOnly ? { width: 400, height: 533 } : getOutputSize();
+  const size = options.size || (previewOnly ? { width: 400, height: 533 } : getOutputSize());
   const footerRatio = Math.max(0.14, Math.min(0.34, Number(els.footerRatio.value) / 100));
   const footerH = Math.round(size.height * footerRatio);
   const canvas = previewOnly ? els.previewCanvas : document.createElement("canvas");
@@ -155,7 +190,7 @@ async function generateCanvasOutput(file, previewOnly = false) {
   return {
     name: file.name.replace(/\.[^.]+$/, ""),
     sourceUrl,
-    outputUrl: canvas.toDataURL("image/png", 0.96),
+    outputUrl: canvas.toDataURL(options.mime || "image/png", options.quality ?? 0.96),
     width: size.width,
     height: size.height
   };
@@ -264,16 +299,23 @@ async function expandSelected() {
 }
 
 async function generateAiSelected() {
+  els.aiBtn.disabled = true;
   try {
     const file = state.files[state.selectedIndex];
     if (!file) throw new Error("Select a source image first.");
     if (!state.logoUrl) throw new Error("Upload a logo first.");
 
-    setStatus("Preparing composition guide for AI...");
-    const [sourceImage, referenceOutput] = await Promise.all([
-      fileToDataUrl(file),
-      generateCanvasOutput(file)
+    setStatus("Compressing images for AI...");
+    const [sourceImage, logoImage, referenceOutput] = await Promise.all([
+      compressImageForApi(file, 1280, "image/jpeg", 0.84),
+      compressImageForApi(state.logoUrl, 512, "image/png"),
+      generateCanvasOutput(file, false, {
+        size: { width: 640, height: 853 },
+        mime: "image/jpeg",
+        quality: 0.8
+      })
     ]);
+
     const guideText = [
       "Use the third reference image as the exact cover layout guide.",
       "Keep the important source artwork visible, especially the game title and hero subject.",
@@ -281,22 +323,28 @@ async function generateAiSelected() {
     ].join(" ");
 
     setStatus("Generating AI iGaming cover...");
+    const payload = {
+      brandName: els.brandName.value.trim(),
+      instructions: [guideText, els.instructions.value.trim()].filter(Boolean).join("\n"),
+      sourceImage,
+      logoImage,
+      referenceImage: referenceOutput.outputUrl,
+      apiKey: els.apiKey.value.trim(),
+      quality: "high"
+    };
+    const body = JSON.stringify(payload);
+    if (body.length > MAX_AI_PAYLOAD_CHARS) {
+      throw new Error("The selected assets are still too large for the AI request. Try a smaller source image or a compressed logo.");
+    }
+
     const response = await fetch("/api/generate", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        brandName: els.brandName.value.trim(),
-        instructions: [guideText, els.instructions.value.trim()].filter(Boolean).join("\n"),
-        sourceImage,
-        logoImage: state.logoUrl,
-        referenceImage: referenceOutput.outputUrl,
-        apiKey: els.apiKey.value.trim(),
-        quality: "high"
-      })
+      body
     });
-    const data = await response.json();
+    const data = await readJsonResponse(response);
     if (!response.ok) throw new Error(data.error || "AI generation failed.");
 
     els.aiPreview.src = data.image;
@@ -314,6 +362,10 @@ async function generateAiSelected() {
     setStatus(data.revisedPrompt ? "AI image ready with revised prompt." : "AI image ready.");
   } catch (error) {
     setStatus(error.message, true);
+  } finally {
+    if (!isStaticDemo) {
+      els.aiBtn.disabled = false;
+    }
   }
 }
 
