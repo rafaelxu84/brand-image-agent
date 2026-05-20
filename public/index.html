@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brand Image Agent</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace">
+        <aside class="panel controls" aria-label="Controls">
+          <div class="brand-block">
+            <p class="eyebrow">Brand Image Agent</p>
+            <h1>Batch portrait expander</h1>
+          </div>
+
+          <label class="field">
+            <span>Brand name</span>
+            <input id="brandName" type="text" placeholder="Pragmatic Play" autocomplete="off" />
+          </label>
+
+          <label class="dropzone" id="logoDrop">
+            <input id="logoInput" type="file" accept="image/*" />
+            <span>Upload logo</span>
+            <strong id="logoName">No logo selected</strong>
+          </label>
+
+          <label class="dropzone" id="imageDrop">
+            <input id="imageInput" type="file" accept="image/*" multiple />
+            <span>Upload source images</span>
+            <strong id="imageCount">No images selected</strong>
+          </label>
+
+          <div class="grid-two">
+            <label class="field">
+              <span>Export width</span>
+              <input id="exportWidth" type="number" min="400" max="2400" value="1200" />
+            </label>
+            <label class="field">
+              <span>Footer %</span>
+              <input id="footerRatio" type="number" min="14" max="34" value="22" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Logo size</span>
+            <input id="logoScale" type="range" min="18" max="52" value="32" />
+          </label>
+
+          <label class="field">
+            <span>AI instructions</span>
+            <textarea id="instructions" rows="4" placeholder="Keep the dragon larger, make the bottom area warmer, preserve all title text."></textarea>
+          </label>
+
+          <div class="actions">
+            <button id="canvasBtn" type="button">Generate canvas batch</button>
+            <button id="aiBtn" type="button" class="secondary">AI enhance selected</button>
+          </div>
+
+          <p class="status" id="status">Ready.</p>
+        </aside>
+
+        <section class="stage" aria-label="Generated images">
+          <div class="toolbar">
+            <div>
+              <strong id="selectedTitle">No image selected</strong>
+              <span id="selectedMeta">Upload assets to begin.</span>
+            </div>
+            <button id="downloadAllBtn" type="button" class="ghost" disabled>Download all</button>
+          </div>
+
+          <div class="preview-grid">
+            <div class="preview-column">
+              <p class="label">Source</p>
+              <div class="image-frame">
+                <img id="sourcePreview" alt="" />
+              </div>
+            </div>
+            <div class="preview-column">
+              <p class="label">Generated</p>
+              <div class="image-frame portrait">
+                <canvas id="previewCanvas" width="400" height="533"></canvas>
+                <img id="aiPreview" alt="" hidden />
+              </div>
+            </div>
+          </div>
+
+          <div class="results" id="results" aria-live="polite"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
