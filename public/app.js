@@ -28,6 +28,13 @@ const els = {
   results: document.querySelector("#results")
 };
 
+const isStaticDemo = location.hostname.endsWith("github.io");
+
+if (isStaticDemo) {
+  els.aiBtn.disabled = true;
+  els.aiBtn.title = "AI enhancement needs the Vercel serverless API.";
+}
+
 function setStatus(message, isError = false) {
   els.status.textContent = message;
   els.status.classList.toggle("error", isError);
