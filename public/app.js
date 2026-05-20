@@ -277,6 +277,145 @@ function downloadImage(dataUrl, filename) {
   link.remove();
 }
 
+function sanitizeFilename(name) {
+  return (name || "cover")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "cover";
+}
+
+function dateStamp() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    "-",
+    pad(now.getHours()),
+    pad(now.getMinutes())
+  ].join("");
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function uint16(value) {
+  return [value & 0xff, (value >>> 8) & 0xff];
+}
+
+function uint32(value) {
+  return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+}
+
+function dataUrlToBytes(dataUrl) {
+  const [header, base64] = dataUrl.split(",");
+  if (!base64) throw new Error("Generated image data is invalid.");
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const ext = header.includes("image/jpeg") ? "jpg" : "png";
+  return { bytes, ext };
+}
+
+function createZip(files) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const checksum = crc32(file.bytes);
+    const localHeader = new Uint8Array([
+      ...uint32(0x04034b50),
+      ...uint16(20),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(checksum),
+      ...uint32(file.bytes.length),
+      ...uint32(file.bytes.length),
+      ...uint16(nameBytes.length),
+      ...uint16(0)
+    ]);
+    parts.push(localHeader, nameBytes, file.bytes);
+
+    const centralHeader = new Uint8Array([
+      ...uint32(0x02014b50),
+      ...uint16(20),
+      ...uint16(20),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(checksum),
+      ...uint32(file.bytes.length),
+      ...uint32(file.bytes.length),
+      ...uint16(nameBytes.length),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(0),
+      ...uint32(offset)
+    ]);
+    centralParts.push(centralHeader, nameBytes);
+    offset += localHeader.length + nameBytes.length + file.bytes.length;
+  }
+
+  const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
+  const endHeader = new Uint8Array([
+    ...uint32(0x06054b50),
+    ...uint16(0),
+    ...uint16(0),
+    ...uint16(files.length),
+    ...uint16(files.length),
+    ...uint32(centralSize),
+    ...uint32(offset),
+    ...uint16(0)
+  ]);
+
+  return new Blob([...parts, ...centralParts, endHeader], { type: "application/zip" });
+}
+
+function downloadOutputsZip() {
+  try {
+    if (!state.outputs.length) throw new Error("Generate at least one cover first.");
+    const usedNames = new Map();
+    const files = state.outputs.map((item, index) => {
+      const { bytes, ext } = dataUrlToBytes(item.outputUrl);
+      const baseName = sanitizeFilename(item.name || `cover-${index + 1}`);
+      const count = usedNames.get(baseName) || 0;
+      usedNames.set(baseName, count + 1);
+      const suffix = count ? `-${count + 1}` : "";
+      return {
+        name: `${String(index + 1).padStart(2, "0")}-${baseName}${suffix}.${ext}`,
+        bytes
+      };
+    });
+    const blob = createZip(files);
+    const url = URL.createObjectURL(blob);
+    downloadImage(url, `igaming-covers-${dateStamp()}.zip`);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    setStatus(`Packed ${files.length} cover(s) into ZIP.`);
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
 async function generateBatch() {
   try {
     if (!state.files.length) throw new Error("Upload at least one source image.");
@@ -445,6 +584,4 @@ els.canvasBtn.addEventListener("click", expandSelected);
 els.batchBtn.addEventListener("click", generateBatch);
 els.aiBtn.addEventListener("click", generateAiSelected);
 els.aiBatchBtn.addEventListener("click", generateAiBatch);
-els.downloadAllBtn.addEventListener("click", () => {
-  state.outputs.forEach((item) => downloadImage(item.outputUrl, `${item.name}-portrait.png`));
-});
+els.downloadAllBtn.addEventListener("click", downloadOutputsZip);
