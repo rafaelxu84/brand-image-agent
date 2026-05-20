@@ -150,7 +150,16 @@ async function pickPath(kind) {
   };
   if (!scripts[kind]) throw new Error("Unknown picker type.");
 
-  const { stdout } = await execFileAsync("osascript", ["-e", scripts[kind]], { timeout: 120000 });
+  let stdout = "";
+  try {
+    const result = await execFileAsync("osascript", ["-e", scripts[kind]], { timeout: 120000 });
+    stdout = result.stdout;
+  } catch (error) {
+    if (String(error.stderr || error.message).includes("User canceled")) {
+      return "";
+    }
+    throw error;
+  }
   const selectedPath = stdout.trim();
   if (!selectedPath) throw new Error("No path selected.");
   return selectedPath;
@@ -264,6 +273,7 @@ const html = String.raw`<!doctype html>
       async function pick(kind, targetId) {
         try {
           const data = await post("/api/pick", { kind });
+          if (!data.path) return;
           el[targetId].value = data.path;
           localStorage.setItem("batch." + targetId, data.path);
         } catch (error) {
