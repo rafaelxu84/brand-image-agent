@@ -177,10 +177,10 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   ctx.restore();
 
   if (options.protectArtwork) {
-    const artTop = Math.round(8 * scale);
+    const artTop = Math.round(0 * scale);
     const titleBottomY = Math.round(DESIGN_TITLE_BOTTOM_Y * scale);
-    const artHeight = Math.round(titleBottomY - artTop + 28 * scale);
-    drawContain(ctx, sourceImg, 0, artTop, size.width, artHeight, 0.5);
+    const artHeight = Math.round(titleBottomY - artTop + 44 * scale);
+    drawContain(ctx, sourceImg, 0, artTop, size.width, artHeight, 0.56);
   } else {
     drawHeightFit(ctx, sourceImg, size.width, size.height);
   }
@@ -484,7 +484,8 @@ async function generateAiForFile(file) {
 
   const guideText = [
     "Use the third reference image as the exact cover layout guide.",
-    "Follow the exact 400x533 coordinate standard from the guide. Game title visual block max width is 360px, and the title bottom should align around y=413px, exactly 120px above the canvas bottom.",
+    "Follow the exact 400x533 coordinate standard from the guide. Game title visual block must be scaled to nearly fill the 360px title safe width. If the title is smaller than 340px wide, enlarge it; if it is wider than 360px, shrink it. Target title width is 350-360px.",
+    "The title bottom should align around y=413px, exactly 120px above the canvas bottom. Keep title centered horizontally and highly readable.",
     "The logo must be in the bottom 116px area, vertically centered inside that area, with a 40px left margin and maximum visual width 230px.",
     "Keep all important source artwork visible: top text, multipliers, upper decorations, edge/corner characters, side creatures, main subject, and full game title.",
     "Do not zoom in or crop the original information. If space is tight, zoom out and extend the environment/background.",
