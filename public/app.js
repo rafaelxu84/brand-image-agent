@@ -33,7 +33,7 @@ const isStaticDemo = location.hostname.endsWith("github.io");
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
-  els.aiBtn.title = "AI enhancement needs the Vercel serverless API.";
+  els.aiBtn.title = "AI cover generation needs the Vercel serverless API.";
 }
 
 function setStatus(message, isError = false) {
@@ -268,8 +268,18 @@ async function generateAiSelected() {
     if (!file) throw new Error("Select a source image first.");
     if (!state.logoUrl) throw new Error("Upload a logo first.");
 
-    setStatus("Sending selected image to AI...");
-    const sourceImage = await fileToDataUrl(file);
+    setStatus("Preparing composition guide for AI...");
+    const [sourceImage, referenceOutput] = await Promise.all([
+      fileToDataUrl(file),
+      generateCanvasOutput(file)
+    ]);
+    const guideText = [
+      "Use the third reference image as the exact cover layout guide.",
+      "Keep the important source artwork visible, especially the game title and hero subject.",
+      "Improve the lower mask so it feels like natural smoke, shadow, or lighting from the original image."
+    ].join(" ");
+
+    setStatus("Generating AI iGaming cover...");
     const response = await fetch("/api/generate", {
       method: "POST",
       headers: {
@@ -277,10 +287,11 @@ async function generateAiSelected() {
       },
       body: JSON.stringify({
         brandName: els.brandName.value.trim(),
-        instructions: els.instructions.value.trim(),
+        instructions: [guideText, els.instructions.value.trim()].filter(Boolean).join("\n"),
         sourceImage,
         logoImage: state.logoUrl,
-        quality: "medium"
+        referenceImage: referenceOutput.outputUrl,
+        quality: "high"
       })
     });
     const data = await response.json();

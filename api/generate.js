@@ -1,11 +1,12 @@
 const MAX_DATA_URL_LENGTH = 12 * 1024 * 1024;
+const MAX_BODY_LENGTH = 38 * 1024 * 1024;
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > MAX_DATA_URL_LENGTH * 2) {
+      if (body.length > MAX_BODY_LENGTH) {
         reject(new Error("Payload too large. Try a smaller image or use the canvas generator."));
         req.destroy();
       }
@@ -35,12 +36,15 @@ function buildPrompt({ brandName, instructions }) {
   const customLine = instructions ? `Additional direction: ${instructions}` : "";
 
   return [
-    "Create a premium portrait marketing image from the first reference image.",
+    "Create a premium iGaming portrait cover image from the first reference image.",
     brandLine,
     "Use the second reference image as the brand logo.",
-    "Match this production pattern: preserve the main subject, product/game title, colors, and lighting from the source image; recompose into a vertical portrait asset; extend the lower area into a dark, smooth branded footer; place the logo centered in the lower footer.",
-    "Keep all existing title text readable and unchanged. Preserve the logo as accurately as possible. Do not invent extra text, badges, UI, watermarks, or borders.",
-    "Make the final feel like a polished app-store or casino game promotional creative.",
+    "If a third reference image is provided, treat it as the composition guide: preserve its portrait framing, lower dark occlusion/gradient area, and fixed lower-left logo position, but make the final more natural and polished than a simple canvas crop.",
+    "Critical composition: keep the source image's core information visible. The main character, game title, important symbols, and readable title text must remain exposed. The title should sit low and centered, similar to the source, without being covered by the lower overlay.",
+    "Create a vertical cover with a cinematic lower obstruction: the lower 20-28% should have a dark, smoky, soft-gradient mask that covers busy background details but does not hide the game title. The mask should feel integrated with the source lighting and color palette.",
+    "Preserve the original title text exactly as much as possible. Do not invent new words, badges, buttons, UI, jackpots, app-store labels, watermarks, or borders.",
+    "Place the logo in the lower-left fixed area, matching the guide image placement. Preserve the logo shape and colors accurately.",
+    "Make the final suitable as an iGaming game cover: sharp, premium, high contrast, readable, dramatic, and commercially polished.",
     customLine
   ]
     .filter(Boolean)
@@ -66,6 +70,34 @@ export default async function handler(req, res) {
     const payload = await readJson(req);
     assertDataUrl(payload.sourceImage, "sourceImage");
     assertDataUrl(payload.logoImage, "logoImage");
+    if (payload.referenceImage) {
+      assertDataUrl(payload.referenceImage, "referenceImage");
+    }
+
+    const content = [
+      {
+        type: "input_text",
+        text: buildPrompt({
+          brandName: payload.brandName,
+          instructions: payload.instructions
+        })
+      },
+      {
+        type: "input_image",
+        image_url: payload.sourceImage
+      },
+      {
+        type: "input_image",
+        image_url: payload.logoImage
+      }
+    ];
+
+    if (payload.referenceImage) {
+      content.push({
+        type: "input_image",
+        image_url: payload.referenceImage
+      });
+    }
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -78,23 +110,7 @@ export default async function handler(req, res) {
         input: [
           {
             role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: buildPrompt({
-                  brandName: payload.brandName,
-                  instructions: payload.instructions
-                })
-              },
-              {
-                type: "input_image",
-                image_url: payload.sourceImage
-              },
-              {
-                type: "input_image",
-                image_url: payload.logoImage
-              }
-            ]
+            content
           }
         ],
         tools: [
