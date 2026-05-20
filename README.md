@@ -36,6 +36,10 @@ GitHub Pages publishes the static canvas generator from `public/`:
 
 https://rafaelxu84.github.io/brand-image-agent/
 
+The AI-enabled Vercel app is available here:
+
+https://brand-image-agent.vercel.app/
+
 ### Vercel deployment
 
 ```bash
@@ -57,4 +61,4 @@ git commit -m "Add brand image agent"
 gh repo create brand-image-agent --private --source=. --remote=origin --push
 ```
 
-The AI enhancement API needs Vercel or another serverless host because GitHub Pages is static.
+The AI cover flow sends the source image, logo, and a canvas-generated composition guide to the serverless API. If `OPENAI_API_KEY` is not set in Vercel, use the temporary API key field in the UI for testing. The key is not stored by the browser.
