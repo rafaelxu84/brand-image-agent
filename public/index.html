@@ -49,6 +49,15 @@
           </label>
 
           <label class="field">
+            <span>AI quality</span>
+            <select id="aiQuality">
+              <option value="medium" selected>Medium - balanced</option>
+              <option value="low">Low - draft batch</option>
+              <option value="high">High - final only</option>
+            </select>
+          </label>
+
+          <label class="field">
             <span>AI instructions</span>
             <textarea id="instructions" rows="4" placeholder="Keep the dragon larger, make the bottom area warmer, preserve all title text."></textarea>
           </label>
@@ -98,6 +107,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260520-8" type="module"></script>
+    <script src="./app.js?v=20260520-9" type="module"></script>
   </body>
 </html>

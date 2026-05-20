@@ -15,6 +15,7 @@ const els = {
   exportWidth: document.querySelector("#exportWidth"),
   footerRatio: document.querySelector("#footerRatio"),
   logoScale: document.querySelector("#logoScale"),
+  aiQuality: document.querySelector("#aiQuality"),
   instructions: document.querySelector("#instructions"),
   apiKey: document.querySelector("#apiKey"),
   canvasBtn: document.querySelector("#canvasBtn"),
@@ -476,7 +477,8 @@ async function generateAiForFile(file) {
     "Keep the logo at the guide position, not lower than the guide."
   ].join(" ");
 
-  setStatus(`Generating AI cover for ${file.name}...`);
+  const quality = els.aiQuality.value || "medium";
+  setStatus(`Generating ${quality} AI cover for ${file.name}...`);
   const payload = {
     brandName: els.brandName.value.trim(),
     instructions: [guideText, els.instructions.value.trim()].filter(Boolean).join("\n"),
@@ -484,7 +486,7 @@ async function generateAiForFile(file) {
     logoImage,
     referenceImage: referenceOutput.outputUrl,
     apiKey: els.apiKey.value.trim(),
-    quality: "high"
+    quality
   };
   const body = JSON.stringify(payload);
   if (body.length > MAX_AI_PAYLOAD_CHARS) {

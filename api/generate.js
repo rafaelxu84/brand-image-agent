@@ -52,6 +52,10 @@ function buildPrompt({ brandName, instructions }) {
     .join("\n");
 }
 
+function normalizeQuality(value) {
+  return ["low", "medium", "high"].includes(value) ? value : "medium";
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -118,7 +122,7 @@ export default async function handler(req, res) {
           {
             type: "image_generation",
             size: "1024x1536",
-            quality: payload.quality || "medium",
+            quality: normalizeQuality(payload.quality),
             action: "edit"
           }
         ]
