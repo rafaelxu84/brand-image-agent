@@ -17,6 +17,36 @@ python3 -m http.server 4173
 
 Then open `http://localhost:4173/public/`.
 
+## Local batch worker for hundreds of images
+
+For 600+ images, use the local worker instead of keeping a browser tab alive. It processes a folder one image at a time, writes completed covers to disk, and saves `_manifest.json` so it can resume after interruption.
+
+Install dependencies once:
+
+```bash
+npm install
+```
+
+Run a batch:
+
+```bash
+OPENAI_API_KEY=sk-... npm run batch:local -- \
+  --input "/path/to/source-images" \
+  --logo "/path/to/logo.png" \
+  --output "/path/to/output-folder" \
+  --quality medium \
+  --concurrency 1
+```
+
+Useful options:
+
+- `--quality low` for cheaper drafts, `medium` for normal batches, `high` for final selected covers.
+- `--concurrency 1` is safest. Use `2` only if rate limits are healthy.
+- `--retry-failed` retries only files marked failed in `_manifest.json`.
+- `--dry-run` lists images without calling OpenAI.
+
+Outputs are final `400x533` PNG files named like `GameName-ai-portrait.png`.
+
 ## OpenAI setup
 
 For AI generation on Vercel, add:
