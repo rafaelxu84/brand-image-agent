@@ -39,11 +39,12 @@ function buildPrompt({ brandName, instructions }) {
     "Create a premium iGaming portrait cover image from the first reference image.",
     brandLine,
     "Use the second reference image as the brand logo.",
-    "If a third reference image is provided, treat it as the composition guide: preserve its portrait framing, lower dark occlusion/gradient area, and fixed lower-left logo position, but make the final more natural and polished than a simple canvas crop.",
+    "If a third reference image is provided, treat it as the composition guide: preserve its portrait framing, protected full-artwork placement, lower dark occlusion/gradient area, and fixed lower-left logo position, but make the final more natural and polished than a simple canvas crop.",
+    "Hard rule: do not crop, trim, zoom into, or cut off important original source information. Keep the entire original game title, top multipliers, top decorations, corner characters, side creatures, hero subject, and readable text visible. If the source image does not fit the portrait frame, zoom it out and extend/rebuild the surrounding background instead of cropping it.",
     "Critical composition: keep the source image's core information visible. The main character, game title, important symbols, and readable title text must remain exposed. The title should sit low and centered, similar to the source, without being covered by the lower overlay.",
     "Create a vertical cover with a cinematic lower obstruction: the lower 20-28% should have a dark, smoky, soft-gradient mask that covers busy background details but does not hide the game title. The mask should feel integrated with the source lighting and color palette.",
     "Preserve the original title text exactly as much as possible. Do not invent new words, badges, buttons, UI, jackpots, app-store labels, watermarks, or borders.",
-    "Place the logo in the lower-left fixed area, matching the guide image placement. Preserve the logo shape and colors accurately.",
+    "Place the logo in the lower-left fixed area, matching the guide image placement: left edge about 7-10% from the left, top edge around 81-84% of the final image height, with clear bottom breathing room. Preserve the logo shape and colors accurately.",
     "Make the final suitable as an iGaming game cover: sharp, premium, high contrast, readable, dramatic, and commercially polished.",
     customLine
   ]
@@ -118,7 +119,8 @@ export default async function handler(req, res) {
             type: "image_generation",
             size: "1024x1536",
             quality: payload.quality || "medium",
-            action: "edit"
+            action: "edit",
+            input_fidelity: "high"
           }
         ]
       })

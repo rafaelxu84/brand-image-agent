@@ -20,6 +20,7 @@ const els = {
   canvasBtn: document.querySelector("#canvasBtn"),
   batchBtn: document.querySelector("#batchBtn"),
   aiBtn: document.querySelector("#aiBtn"),
+  aiBatchBtn: document.querySelector("#aiBatchBtn"),
   downloadAllBtn: document.querySelector("#downloadAllBtn"),
   status: document.querySelector("#status"),
   selectedTitle: document.querySelector("#selectedTitle"),
@@ -35,7 +36,9 @@ const MAX_AI_PAYLOAD_CHARS = 3.7 * 1024 * 1024;
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
+  els.aiBatchBtn.disabled = true;
   els.aiBtn.title = "AI cover generation needs the Vercel serverless API.";
+  els.aiBatchBtn.title = "AI cover generation needs the Vercel serverless API.";
 }
 
 function setStatus(message, isError = false) {
@@ -120,6 +123,15 @@ function drawHeightFit(ctx, img, width, height) {
   ctx.drawImage(img, x, 0, imageW, imageH);
 }
 
+function drawContain(ctx, img, x, y, width, height, alignY = 0.46) {
+  const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+  const imageW = img.naturalWidth * scale;
+  const imageH = img.naturalHeight * scale;
+  const drawX = x + (width - imageW) / 2;
+  const drawY = y + (height - imageH) * alignY;
+  ctx.drawImage(img, drawX, drawY, imageW, imageH);
+}
+
 function getOutputSize() {
   const width = Math.max(400, Math.min(2400, Number(els.exportWidth.value) || 1200));
   return {
@@ -151,7 +163,13 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   drawCover(ctx, sourceImg, -size.width * 0.04, -size.height * 0.04, size.width * 1.08, size.height * 1.08);
   ctx.restore();
 
-  drawHeightFit(ctx, sourceImg, size.width, size.height);
+  if (options.protectArtwork) {
+    const artTop = Math.round(size.height * 0.02);
+    const artHeight = Math.round(size.height - footerH * 0.28 - artTop);
+    drawContain(ctx, sourceImg, 0, artTop, size.width, artHeight, 0.38);
+  } else {
+    drawHeightFit(ctx, sourceImg, size.width, size.height);
+  }
 
   const fade = ctx.createLinearGradient(0, size.height - footerH * 1.55, 0, size.height);
   fade.addColorStop(0, "rgba(10, 10, 8, 0)");
@@ -174,12 +192,12 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   ctx.fillRect(0, 0, size.width, size.height);
 
   const maxLogoW = size.width * (Number(els.logoScale.value) / 100);
-  const maxLogoH = footerH * 0.38;
+  const maxLogoH = footerH * 0.3;
   const logoScale = Math.min(maxLogoW / logoImg.naturalWidth, maxLogoH / logoImg.naturalHeight);
   const logoW = logoImg.naturalWidth * logoScale;
   const logoH = logoImg.naturalHeight * logoScale;
-  const logoX = size.width * 0.1;
-  const logoY = size.height - footerH * 0.56;
+  const logoX = size.width * 0.075;
+  const logoY = size.height - footerH * 0.78;
 
   ctx.shadowColor = "rgba(0, 0, 0, 0.42)";
   ctx.shadowBlur = size.width * 0.018;
@@ -298,73 +316,107 @@ async function expandSelected() {
   }
 }
 
-async function generateAiSelected() {
-  els.aiBtn.disabled = true;
-  try {
-    const file = state.files[state.selectedIndex];
-    if (!file) throw new Error("Select a source image first.");
-    if (!state.logoUrl) throw new Error("Upload a logo first.");
-
-    setStatus("Compressing images for AI...");
-    const [sourceImage, logoImage, referenceOutput] = await Promise.all([
+async function generateAiForFile(file) {
+  setStatus(`Compressing ${file.name} for AI...`);
+  const [sourceImage, logoImage, referenceOutput] = await Promise.all([
       compressImageForApi(file, 1280, "image/jpeg", 0.84),
       compressImageForApi(state.logoUrl, 512, "image/png"),
       generateCanvasOutput(file, false, {
         size: { width: 640, height: 853 },
         mime: "image/jpeg",
-        quality: 0.8
+        quality: 0.8,
+        protectArtwork: true
       })
-    ]);
+  ]);
 
-    const guideText = [
-      "Use the third reference image as the exact cover layout guide.",
-      "Keep the important source artwork visible, especially the game title and hero subject.",
-      "Improve the lower mask so it feels like natural smoke, shadow, or lighting from the original image."
-    ].join(" ");
+  const guideText = [
+    "Use the third reference image as the exact cover layout guide.",
+    "Keep all important source artwork visible: top text, multipliers, upper decorations, edge/corner characters, side creatures, main subject, and full game title.",
+    "Do not zoom in or crop the original information. If space is tight, zoom out and extend the environment/background.",
+    "Improve the lower mask so it feels like natural smoke, shadow, or lighting from the original image.",
+    "Keep the logo at the guide position, not lower than the guide."
+  ].join(" ");
 
-    setStatus("Generating AI iGaming cover...");
-    const payload = {
-      brandName: els.brandName.value.trim(),
-      instructions: [guideText, els.instructions.value.trim()].filter(Boolean).join("\n"),
-      sourceImage,
-      logoImage,
-      referenceImage: referenceOutput.outputUrl,
-      apiKey: els.apiKey.value.trim(),
-      quality: "high"
-    };
-    const body = JSON.stringify(payload);
-    if (body.length > MAX_AI_PAYLOAD_CHARS) {
-      throw new Error("The selected assets are still too large for the AI request. Try a smaller source image or a compressed logo.");
-    }
+  setStatus(`Generating AI cover for ${file.name}...`);
+  const payload = {
+    brandName: els.brandName.value.trim(),
+    instructions: [guideText, els.instructions.value.trim()].filter(Boolean).join("\n"),
+    sourceImage,
+    logoImage,
+    referenceImage: referenceOutput.outputUrl,
+    apiKey: els.apiKey.value.trim(),
+    quality: "high"
+  };
+  const body = JSON.stringify(payload);
+  if (body.length > MAX_AI_PAYLOAD_CHARS) {
+    throw new Error("The selected assets are still too large for the AI request. Try a smaller source image or a compressed logo.");
+  }
 
-    const response = await fetch("/api/generate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body
-    });
-    const data = await readJsonResponse(response);
-    if (!response.ok) throw new Error(data.error || "AI generation failed.");
+  const response = await fetch("/api/generate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body
+  });
+  const data = await readJsonResponse(response);
+  if (!response.ok) throw new Error(data.error || "AI generation failed.");
 
-    els.aiPreview.src = data.image;
-    els.aiPreview.hidden = false;
-    els.previewCanvas.hidden = true;
-    state.outputs.unshift({
-      name: `${file.name.replace(/\.[^.]+$/, "")}-ai`,
-      sourceUrl: sourceImage,
-      outputUrl: data.image,
-      width: 1024,
-      height: 1536
-    });
+  return {
+    name: `${file.name.replace(/\.[^.]+$/, "")}-ai`,
+    sourceUrl: sourceImage,
+    outputUrl: data.image,
+    width: 1024,
+    height: 1536,
+    revisedPrompt: data.revisedPrompt || null
+  };
+}
+
+async function generateAiSelected() {
+  els.aiBtn.disabled = true;
+  els.aiBatchBtn.disabled = true;
+  try {
+    const file = state.files[state.selectedIndex];
+    if (!file) throw new Error("Select a source image first.");
+    if (!state.logoUrl) throw new Error("Upload a logo first.");
+
+    const output = await generateAiForFile(file);
+    state.outputs.unshift(output);
     renderResults();
     showOutput(state.outputs[0]);
-    setStatus(data.revisedPrompt ? "AI image ready with revised prompt." : "AI image ready.");
+    setStatus(output.revisedPrompt ? "AI image ready with revised prompt." : "AI image ready.");
   } catch (error) {
     setStatus(error.message, true);
   } finally {
     if (!isStaticDemo) {
       els.aiBtn.disabled = false;
+      els.aiBatchBtn.disabled = false;
+    }
+  }
+}
+
+async function generateAiBatch() {
+  els.aiBtn.disabled = true;
+  els.aiBatchBtn.disabled = true;
+  try {
+    if (!state.files.length) throw new Error("Upload at least one source image.");
+    if (!state.logoUrl) throw new Error("Upload a logo first.");
+
+    state.outputs = [];
+    for (let index = 0; index < state.files.length; index += 1) {
+      setStatus(`AI cover ${index + 1}/${state.files.length}...`);
+      const output = await generateAiForFile(state.files[index]);
+      state.outputs.push(output);
+      renderResults();
+      showOutput(output);
+    }
+    setStatus(`AI batch ready: ${state.outputs.length}/${state.files.length}.`);
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    if (!isStaticDemo) {
+      els.aiBtn.disabled = false;
+      els.aiBatchBtn.disabled = false;
     }
   }
 }
@@ -392,6 +444,7 @@ for (const input of [els.exportWidth, els.footerRatio, els.logoScale]) {
 els.canvasBtn.addEventListener("click", expandSelected);
 els.batchBtn.addEventListener("click", generateBatch);
 els.aiBtn.addEventListener("click", generateAiSelected);
+els.aiBatchBtn.addEventListener("click", generateAiBatch);
 els.downloadAllBtn.addEventListener("click", () => {
   state.outputs.forEach((item) => downloadImage(item.outputUrl, `${item.name}-portrait.png`));
 });
