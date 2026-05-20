@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -11,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const host = process.env.BATCH_GUI_HOST || "127.0.0.1";
 const port = Number(process.env.BATCH_GUI_PORT || 4180);
+const execFileAsync = promisify(execFile);
 
 let currentJob = null;
 const logs = [];
@@ -136,6 +138,24 @@ function stopJob() {
   }
 }
 
+async function pickPath(kind) {
+  if (process.platform !== "darwin") {
+    throw new Error("Native path picker is currently supported on macOS. Paste the path manually on this OS.");
+  }
+
+  const scripts = {
+    input: 'POSIX path of (choose folder with prompt "Choose the source image folder")',
+    output: 'POSIX path of (choose folder with prompt "Choose the output folder")',
+    logo: 'POSIX path of (choose file with prompt "Choose the logo file" of type {"public.image"})'
+  };
+  if (!scripts[kind]) throw new Error("Unknown picker type.");
+
+  const { stdout } = await execFileAsync("osascript", ["-e", scripts[kind]], { timeout: 120000 });
+  const selectedPath = stdout.trim();
+  if (!selectedPath) throw new Error("No path selected.");
+  return selectedPath;
+}
+
 const html = String.raw`<!doctype html>
 <html lang="en">
   <head>
@@ -156,6 +176,7 @@ const html = String.raw`<!doctype html>
       button { min-height:42px; border:1px solid transparent; border-radius:8px; padding:0 14px; background:var(--accent); color:#171a12; font-weight:800; cursor:pointer; }
       button.secondary { background:transparent; border-color:var(--line); color:var(--text); }
       button.danger { background:transparent; border-color:var(--danger); color:var(--danger); }
+      .path-row { display:grid; grid-template-columns:minmax(0,1fr) 92px; gap:8px; }
       .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
       .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px; }
       .stat { border:1px solid var(--line); padding:12px; background:#111710; }
@@ -170,9 +191,9 @@ const html = String.raw`<!doctype html>
     <main>
       <aside>
         <h1>Local Batch Console</h1>
-        <label>Source image folder <input id="input" placeholder="/Users/rafa/Downloads/source-images" /></label>
-        <label>Logo file path <input id="logo" placeholder="/Users/rafa/Downloads/logo.png" /></label>
-        <label>Output folder <input id="output" placeholder="/Users/rafa/Downloads/cover-output" /></label>
+        <label>Source image folder <span class="path-row"><input id="input" placeholder="/Users/rafa/Downloads/source-images" /><button id="pickInput" class="secondary" type="button">Browse</button></span></label>
+        <label>Logo file path <span class="path-row"><input id="logo" placeholder="/Users/rafa/Downloads/logo.png" /><button id="pickLogo" class="secondary" type="button">Browse</button></span></label>
+        <label>Output folder <span class="path-row"><input id="output" placeholder="/Users/rafa/Downloads/cover-output" /><button id="pickOutput" class="secondary" type="button">Browse</button></span></label>
         <label>OpenAI API key <input id="apiKey" type="password" placeholder="Optional if exported in terminal" /></label>
         <label>Brand name <input id="brand" placeholder="Pragmatic Play" /></label>
         <label>Quality
@@ -240,6 +261,18 @@ const html = String.raw`<!doctype html>
         if (!res.ok) throw new Error(data.error || "Request failed");
         return data;
       }
+      async function pick(kind, targetId) {
+        try {
+          const data = await post("/api/pick", { kind });
+          el[targetId].value = data.path;
+          localStorage.setItem("batch." + targetId, data.path);
+        } catch (error) {
+          alert(error.message);
+        }
+      }
+      document.getElementById("pickInput").onclick = () => pick("input", "input");
+      document.getElementById("pickLogo").onclick = () => pick("logo", "logo");
+      document.getElementById("pickOutput").onclick = () => pick("output", "output");
       document.getElementById("start").onclick = async () => {
         try { await post("/api/start", payload()); await refresh(); }
         catch (error) { alert(error.message); }
@@ -286,6 +319,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/stop") {
       sendJson(res, 200, { ok: stopJob() });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/pick") {
+      const { kind } = await readJson(req);
+      sendJson(res, 200, { path: await pickPath(kind) });
       return;
     }
     sendJson(res, 404, { error: "Not found" });
