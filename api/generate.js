@@ -119,8 +119,7 @@ export default async function handler(req, res) {
             type: "image_generation",
             size: "1024x1536",
             quality: payload.quality || "medium",
-            action: "edit",
-            input_fidelity: "high"
+            action: "edit"
           }
         ]
       })
