@@ -1,0 +1,243 @@
+import { upload } from "https://esm.sh/@vercel/blob@latest/client";
+
+const DESIGN = { width: 400, height: 533, footerHeight: 116, titleCenterY: Math.round(533 * 0.618) };
+const state = {
+  files: [],
+  jobId: new URLSearchParams(location.search).get("jobId") || localStorage.getItem("hosted.jobId") || ""
+};
+
+const els = {
+  accessCode: document.querySelector("#accessCode"),
+  brandName: document.querySelector("#brandName"),
+  imageInput: document.querySelector("#imageInput"),
+  imageCount: document.querySelector("#imageCount"),
+  quality: document.querySelector("#quality"),
+  chunkSize: document.querySelector("#chunkSize"),
+  instructions: document.querySelector("#instructions"),
+  submitBtn: document.querySelector("#submitBtn"),
+  refreshBtn: document.querySelector("#refreshBtn"),
+  collectBtn: document.querySelector("#collectBtn"),
+  jobTitle: document.querySelector("#jobTitle"),
+  jobMeta: document.querySelector("#jobMeta"),
+  progress: document.querySelector("#progress"),
+  status: document.querySelector("#status"),
+  results: document.querySelector("#results")
+};
+
+for (const id of ["accessCode", "brandName", "quality", "chunkSize", "instructions"]) {
+  const saved = localStorage.getItem(`hosted.${id}`);
+  if (saved !== null) els[id].value = saved;
+  els[id].addEventListener("input", () => localStorage.setItem(`hosted.${id}`, els[id].value));
+}
+
+function setStatus(message, isError = false) {
+  els.status.textContent = message;
+  els.status.classList.toggle("error", isError);
+}
+
+function safeName(name) {
+  return (name || "cover")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 90) || "cover";
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not load image."));
+    img.src = src;
+  });
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function coverRect(sourceW, sourceH, destW, destH) {
+  const scale = Math.max(destW / sourceW, destH / sourceH);
+  const width = sourceW * scale;
+  const height = sourceH * scale;
+  return { x: (destW - width) / 2, y: (destH - height) / 2, width, height };
+}
+
+function drawCover(ctx, img, x, y, width, height) {
+  const rect = coverRect(img.naturalWidth, img.naturalHeight, width, height);
+  ctx.drawImage(img, x + rect.x, y + rect.y, rect.width, rect.height);
+}
+
+function drawContain(ctx, img, x, y, width, height, alignY = 0.5) {
+  const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+  const imageW = img.naturalWidth * scale;
+  const imageH = img.naturalHeight * scale;
+  ctx.drawImage(img, x + (width - imageW) / 2, y + (height - imageH) * alignY, imageW, imageH);
+}
+
+async function makeGuideBlob(file) {
+  const sourceUrl = await fileToDataUrl(file);
+  const img = await loadImage(sourceUrl);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = DESIGN.width;
+  canvas.height = DESIGN.height;
+
+  ctx.save();
+  ctx.filter = "blur(8px) saturate(1.12)";
+  drawCover(ctx, img, -16, -22, DESIGN.width + 32, DESIGN.height + 44);
+  ctx.restore();
+
+  drawContain(ctx, img, 0, 12, DESIGN.width, DESIGN.titleCenterY + 118, 0.5);
+
+  const fade = ctx.createLinearGradient(0, DESIGN.height - DESIGN.footerHeight * 1.25, 0, DESIGN.height);
+  fade.addColorStop(0, "rgba(10,10,8,0)");
+  fade.addColorStop(0.58, "rgba(20,15,10,.48)");
+  fade.addColorStop(1, "rgba(6,8,12,.82)");
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, DESIGN.height - DESIGN.footerHeight * 1.25, DESIGN.width, DESIGN.height);
+
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+}
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Request failed.");
+  return data;
+}
+
+function updateProgress(done, total, label) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  els.progress.value = pct;
+  setStatus(`${label} ${done}/${total}`);
+}
+
+async function submitHostedJob() {
+  if (!state.files.length) throw new Error("Upload at least one source image.");
+  const jobId = `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const accessCode = els.accessCode.value.trim();
+  const uploaded = [];
+  const totalSteps = state.files.length * 2;
+  let done = 0;
+
+  for (const file of state.files) {
+    const base = safeName(file.name);
+    const clientPayload = JSON.stringify({ accessCode, jobId });
+    const source = await upload(`hosted/jobs/${jobId}/sources/${base}${file.name.match(/\.[^.]+$/)?.[0] || ".png"}`, file, {
+      access: "public",
+      handleUploadUrl: "/api/hosted-upload",
+      clientPayload
+    });
+    done += 1;
+    updateProgress(done, totalSteps, "Uploaded assets");
+
+    const guideBlob = await makeGuideBlob(file);
+    const guide = await upload(`hosted/jobs/${jobId}/guides/${base}.jpg`, guideBlob, {
+      access: "public",
+      handleUploadUrl: "/api/hosted-upload",
+      clientPayload
+    });
+    done += 1;
+    updateProgress(done, totalSteps, "Uploaded assets");
+    uploaded.push({ name: file.name, sourceUrl: source.url, guideUrl: guide.url });
+  }
+
+  const result = await postJson("/api/hosted-submit", {
+    accessCode,
+    jobId,
+    brandName: els.brandName.value.trim(),
+    quality: els.quality.value,
+    chunkSize: Number(els.chunkSize.value || 10),
+    instructions: els.instructions.value.trim(),
+    files: uploaded
+  });
+  state.jobId = result.jobId;
+  localStorage.setItem("hosted.jobId", state.jobId);
+  history.replaceState(null, "", `/hosted.html?jobId=${encodeURIComponent(state.jobId)}`);
+  renderManifest(result.manifest);
+}
+
+function renderManifest(manifest) {
+  const completed = manifest.files.filter((file) => file.status === "completed").length;
+  const failed = manifest.files.filter((file) => file.status === "failed").length;
+  els.jobTitle.textContent = manifest.id;
+  els.jobMeta.textContent = `${manifest.status} · ${completed}/${manifest.files.length} completed · ${failed} failed`;
+  els.progress.value = manifest.files.length ? Math.round((completed / manifest.files.length) * 100) : 0;
+  els.results.innerHTML = "";
+
+  for (const file of manifest.files) {
+    const row = document.createElement("article");
+    row.className = "thumb";
+    if (file.outputUrl) {
+      const img = document.createElement("img");
+      img.src = file.outputUrl;
+      img.alt = file.name;
+      row.append(img);
+    }
+    const title = document.createElement("strong");
+    title.textContent = file.name;
+    const meta = document.createElement("span");
+    meta.textContent = file.error || file.status;
+    row.append(title, meta);
+    if (file.outputUrl) {
+      const link = document.createElement("a");
+      link.href = file.outputUrl;
+      link.download = `${safeName(file.name)}-ai-portrait.png`;
+      link.textContent = "Download";
+      row.append(link);
+    }
+    els.results.append(row);
+  }
+}
+
+async function refreshStatus() {
+  if (!state.jobId) throw new Error("No hosted job id yet.");
+  const url = `/api/hosted-status?jobId=${encodeURIComponent(state.jobId)}&code=${encodeURIComponent(els.accessCode.value.trim())}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Could not refresh status.");
+  renderManifest(data.manifest);
+  setStatus("Status refreshed.");
+}
+
+async function collectNow() {
+  if (!state.jobId) throw new Error("No hosted job id yet.");
+  const url = `/api/hosted-cron?jobId=${encodeURIComponent(state.jobId)}&secret=${encodeURIComponent(els.accessCode.value.trim())}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Could not collect results.");
+  setStatus(`Collector ran: ${data.touched?.join(", ") || "no active jobs"}.`);
+  await refreshStatus();
+}
+
+els.imageInput.addEventListener("change", (event) => {
+  state.files = Array.from(event.target.files || []);
+  els.imageCount.textContent = state.files.length ? `${state.files.length} image(s) selected` : "No images selected";
+});
+
+els.submitBtn.addEventListener("click", async () => {
+  els.submitBtn.disabled = true;
+  try {
+    await submitHostedJob();
+    setStatus("Hosted job submitted. You can close this page now.");
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    els.submitBtn.disabled = false;
+  }
+});
+
+els.refreshBtn.addEventListener("click", () => refreshStatus().catch((error) => setStatus(error.message, true)));
+els.collectBtn.addEventListener("click", () => collectNow().catch((error) => setStatus(error.message, true)));
+
+if (state.jobId) refreshStatus().catch(() => {});

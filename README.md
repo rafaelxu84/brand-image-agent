@@ -112,6 +112,23 @@ The AI-enabled Vercel app is available here:
 
 https://brand-image-agent.vercel.app/
 
+The hosted offline batch page is available here:
+
+https://brand-image-agent.vercel.app/hosted.html
+
+Hosted mode stores uploaded sources, guides, manifests, and completed PNGs in Vercel Blob, submits OpenAI Batch API jobs, and uses GitHub Actions to call `/api/hosted-cron` every 15 minutes. This lets a job continue after the browser or local computer is closed.
+
+Required production environment variables:
+
+```bash
+OPENAI_API_KEY=...
+BLOB_READ_WRITE_TOKEN=...
+HOSTED_ACCESS_CODE=...
+HOSTED_CRON_SECRET=...
+```
+
+For Vercel Hobby plans, Vercel Cron cannot run every few minutes, so this repo uses `.github/workflows/hosted-batch-cron.yml` as the hosted collector timer. Add the same `HOSTED_CRON_SECRET` value as a GitHub Actions secret.
+
 ### Vercel deployment
 
 ```bash

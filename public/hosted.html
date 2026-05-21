@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hosted Batch Agent</title>
+    <link rel="stylesheet" href="./styles.css?v=20260521-1" />
+    <style>
+      .hosted-layout { display:grid; grid-template-columns:360px minmax(0,1fr); gap:18px; width:min(1240px,100%); margin:0 auto; padding:20px; }
+      .hosted-panel, .hosted-main { border:1px solid rgba(255,255,255,.14); background:rgba(15,18,22,.92); padding:18px; }
+      .hosted-list { display:grid; gap:10px; margin-top:14px; }
+      .hosted-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; border:1px solid rgba(255,255,255,.12); padding:10px; }
+      .hosted-row a { color:#d5f05c; }
+      .small { color:#aeb7a6; font-size:13px; line-height:1.45; }
+      progress { width:100%; height:12px; }
+      @media (max-width:900px){ .hosted-layout { grid-template-columns:1fr; } }
+    </style>
+  </head>
+  <body>
+    <main class="hosted-layout">
+      <aside class="hosted-panel">
+        <p class="eyebrow">Hosted Batch</p>
+        <h1>Offline cover generation</h1>
+
+        <label class="field">
+          <span>Access code</span>
+          <input id="accessCode" type="password" placeholder="Optional if not configured" autocomplete="off" />
+        </label>
+
+        <label class="field">
+          <span>Brand name</span>
+          <input id="brandName" type="text" placeholder="Pragmatic Play" autocomplete="off" />
+        </label>
+
+        <label class="dropzone">
+          <input id="imageInput" type="file" accept="image/*" multiple />
+          <span>Upload source images</span>
+          <strong id="imageCount">No images selected</strong>
+        </label>
+
+        <label class="field">
+          <span>AI quality</span>
+          <select id="quality">
+            <option value="medium" selected>Medium - balanced</option>
+            <option value="low">Low - draft batch</option>
+            <option value="high">High - final only</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Batch chunk size</span>
+          <input id="chunkSize" type="number" min="1" max="25" value="10" />
+        </label>
+
+        <label class="field">
+          <span>Extra instructions</span>
+          <textarea id="instructions" rows="4" placeholder="Keep the title large and centered on the golden-ratio line."></textarea>
+        </label>
+
+        <div class="actions">
+          <button id="submitBtn" type="button">Upload & submit</button>
+          <button id="refreshBtn" type="button" class="secondary">Refresh status</button>
+        </div>
+        <button id="collectBtn" type="button" class="ghost" style="margin-top:10px;width:100%;">Collect now</button>
+        <p class="small">After submit, you can close this page. The hosted collector can keep polling from GitHub Actions and save finished PNGs here.</p>
+      </aside>
+
+      <section class="hosted-main">
+        <div class="toolbar">
+          <div>
+            <strong id="jobTitle">No hosted job yet</strong>
+            <span id="jobMeta">Submit a job or paste a job id in the URL: ?jobId=...</span>
+          </div>
+          <a href="/" class="ghost">Live tool</a>
+        </div>
+        <progress id="progress" max="100" value="0"></progress>
+        <p class="status" id="status">Ready.</p>
+        <div class="results" id="results"></div>
+      </section>
+    </main>
+
+    <script src="./hosted.js?v=20260521-1" type="module"></script>
+  </body>
+</html>

@@ -15,6 +15,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@vercel/blob": "^2.4.0",
     "sharp": "^0.34.5"
   }
 }

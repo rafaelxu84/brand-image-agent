@@ -111,6 +111,20 @@ h1 {
   line-height: 1.05;
 }
 
+.hosted-link,
+.toolbar a.ghost,
+.thumb a {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.hosted-link {
+  display: inline-block;
+  margin-top: 10px;
+}
+
 .field,
 .dropzone {
   display: grid;

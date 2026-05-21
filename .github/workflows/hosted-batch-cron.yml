@@ -1,0 +1,14 @@
+name: Hosted batch collector
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll hosted batch collector
+        run: |
+          curl -fsS "https://brand-image-agent.vercel.app/api/hosted-cron?secret=${{ secrets.HOSTED_CRON_SECRET }}"
