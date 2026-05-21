@@ -3,7 +3,8 @@ import { upload } from "https://esm.sh/@vercel/blob@latest/client";
 const DESIGN = { width: 400, height: 533, footerHeight: 116, titleCenterY: Math.round(533 * 0.618) };
 const state = {
   files: [],
-  jobId: new URLSearchParams(location.search).get("jobId") || localStorage.getItem("hosted.jobId") || ""
+  jobId: new URLSearchParams(location.search).get("jobId") || localStorage.getItem("hosted.jobId") || "",
+  manifest: null
 };
 
 const els = {
@@ -17,6 +18,7 @@ const els = {
   submitBtn: document.querySelector("#submitBtn"),
   refreshBtn: document.querySelector("#refreshBtn"),
   collectBtn: document.querySelector("#collectBtn"),
+  downloadZipBtn: document.querySelector("#downloadZipBtn"),
   jobTitle: document.querySelector("#jobTitle"),
   jobMeta: document.querySelector("#jobMeta"),
   progress: document.querySelector("#progress"),
@@ -122,6 +124,126 @@ function updateProgress(done, total, label) {
   setStatus(`${label} ${done}/${total}`);
 }
 
+function dateStamp() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function uint16(value) {
+  return [value & 0xff, (value >>> 8) & 0xff];
+}
+
+function uint32(value) {
+  return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+}
+
+function createZip(files) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const checksum = crc32(file.bytes);
+    const localHeader = new Uint8Array([
+      ...uint32(0x04034b50),
+      ...uint16(20),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(checksum),
+      ...uint32(file.bytes.length),
+      ...uint32(file.bytes.length),
+      ...uint16(nameBytes.length),
+      ...uint16(0)
+    ]);
+    parts.push(localHeader, nameBytes, file.bytes);
+
+    const centralHeader = new Uint8Array([
+      ...uint32(0x02014b50),
+      ...uint16(20),
+      ...uint16(20),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(checksum),
+      ...uint32(file.bytes.length),
+      ...uint32(file.bytes.length),
+      ...uint16(nameBytes.length),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint16(0),
+      ...uint32(0),
+      ...uint32(offset)
+    ]);
+    centralParts.push(centralHeader, nameBytes);
+    offset += localHeader.length + nameBytes.length + file.bytes.length;
+  }
+
+  const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
+  const endHeader = new Uint8Array([
+    ...uint32(0x06054b50),
+    ...uint16(0),
+    ...uint16(0),
+    ...uint16(files.length),
+    ...uint16(files.length),
+    ...uint32(centralSize),
+    ...uint32(offset),
+    ...uint16(0)
+  ]);
+  return new Blob([...parts, ...centralParts, endHeader], { type: "application/zip" });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+async function downloadCompletedZip() {
+  const manifest = state.manifest;
+  if (!manifest) throw new Error("Refresh a hosted job first.");
+  const completed = manifest.files.filter((file) => file.outputUrl);
+  if (!completed.length) throw new Error("No completed images to download yet.");
+
+  const zipFiles = [];
+  for (const [index, file] of completed.entries()) {
+    setStatus(`Downloading completed images ${index + 1}/${completed.length}...`);
+    const response = await fetch(file.outputUrl);
+    if (!response.ok) throw new Error(`Could not download ${file.name}.`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    zipFiles.push({
+      name: `${String(index + 1).padStart(3, "0")}-${safeName(file.name)}-ai-portrait.png`,
+      bytes
+    });
+  }
+
+  const zip = createZip(zipFiles);
+  downloadBlob(zip, `${manifest.id || "hosted-covers"}-${dateStamp()}.zip`);
+  setStatus(`Packed ${zipFiles.length} completed image(s) into ZIP.`);
+}
+
 async function submitHostedJob() {
   if (!state.files.length) throw new Error("Upload at least one source image.");
   const jobId = `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -168,11 +290,13 @@ async function submitHostedJob() {
 }
 
 function renderManifest(manifest) {
+  state.manifest = manifest;
   const completed = manifest.files.filter((file) => file.status === "completed").length;
   const failed = manifest.files.filter((file) => file.status === "failed").length;
   els.jobTitle.textContent = manifest.id;
   els.jobMeta.textContent = `${manifest.status} · ${completed}/${manifest.files.length} completed · ${failed} failed`;
   els.progress.value = manifest.files.length ? Math.round((completed / manifest.files.length) * 100) : 0;
+  els.downloadZipBtn.disabled = completed === 0;
   els.results.innerHTML = "";
 
   for (const file of manifest.files) {
@@ -239,5 +363,6 @@ els.submitBtn.addEventListener("click", async () => {
 
 els.refreshBtn.addEventListener("click", () => refreshStatus().catch((error) => setStatus(error.message, true)));
 els.collectBtn.addEventListener("click", () => collectNow().catch((error) => setStatus(error.message, true)));
+els.downloadZipBtn.addEventListener("click", () => downloadCompletedZip().catch((error) => setStatus(error.message, true)));
 
 if (state.jobId) refreshStatus().catch(() => {});

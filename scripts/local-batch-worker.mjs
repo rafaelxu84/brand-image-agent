@@ -81,6 +81,27 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchWithRetry(url, options, { label = "request", attempts = 6 } = {}) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status !== 408 && response.status !== 409 && response.status !== 429 && response.status < 500) {
+        return response;
+      }
+      lastError = new Error(`${label} returned ${response.status}`);
+      if (attempt === attempts) return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) throw error;
+    }
+    const waitMs = Math.min(30000, 1000 * 2 ** (attempt - 1));
+    console.log(`${label} failed (${lastError.message}); retrying in ${Math.round(waitMs / 1000)}s...`);
+    await sleep(waitMs);
+  }
+  throw lastError || new Error(`${label} failed`);
+}
+
 function safeBaseName(filePath) {
   return path
     .basename(filePath, path.extname(filePath))
@@ -204,7 +225,7 @@ function buildPrompt({ brandName, instructions }) {
 }
 
 async function callOpenAI({ apiKey, model, quality, brandName, instructions, sourceImage, guideImage }) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -231,7 +252,7 @@ async function callOpenAI({ apiKey, model, quality, brandName, instructions, sou
         }
       ]
     })
-  });
+  }, { label: "OpenAI image request" });
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(data?.error?.message || `OpenAI request failed with ${response.status}`);
