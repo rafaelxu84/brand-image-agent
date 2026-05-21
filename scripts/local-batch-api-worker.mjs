@@ -314,6 +314,7 @@ function outputPathFor(args, filePath) {
 
 function shouldIncludeFile(record, outputPath, retryFailed, force) {
   if (force) return true;
+  if (retryFailed) return ["failed", "expired", "cancelled"].includes(record?.status);
   if (!record) return true;
   if (record.status === "completed") return false;
   if (record.status === "failed") return retryFailed;

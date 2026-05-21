@@ -277,11 +277,15 @@ async function processOne({ filePath, args, apiKey, model, manifest, manifestPat
   const record = manifest.files[key] || {};
   const outputPath = path.join(args.output, `${safeBaseName(filePath)}-ai-portrait.png`);
 
-  if (record.status === "completed" && !args.retryFailed && !args.force && (await pathExists(outputPath))) {
+  if (record.status === "completed" && !args.force && (await pathExists(outputPath))) {
     console.log(`skip completed: ${key}`);
     return;
   }
-  if (record.status === "failed" && !args.retryFailed) {
+  if (args.retryFailed && record.status !== "failed") {
+    console.log(`skip non-failed: ${key}`);
+    return;
+  }
+  if (record.status === "failed" && !args.retryFailed && !args.force) {
     console.log(`skip failed: ${key} (use --retry-failed)`);
     return;
   }
