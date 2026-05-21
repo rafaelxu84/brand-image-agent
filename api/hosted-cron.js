@@ -15,9 +15,19 @@ import {
 function summarize(manifest) {
   const completed = manifest.files.filter((file) => file.status === "completed").length;
   const failed = manifest.files.filter((file) => file.status === "failed").length;
+  const running = manifest.files.some((file) => file.status === "submitted" || file.status === "running");
   const active = manifest.batches.some((batch) => !["completed", "failed", "expired", "cancelled"].includes(batch.status));
-  manifest.status = active ? "running" : failed ? "completed_with_errors" : "completed";
+  manifest.status = active || running ? "running" : failed ? "completed_with_errors" : "completed";
   return { completed, failed, total: manifest.files.length };
+}
+
+function findFileForRow(manifest, batch, row, batchIndex) {
+  const mappedItem = (batch.items || []).find((item) => item.customId === row.custom_id);
+  if (mappedItem && manifest.files[mappedItem.fileIndex]) return manifest.files[mappedItem.fileIndex];
+
+  const customIndex = Number(String(row.custom_id).split("-").at(-1)) - 1;
+  const chunkOffset = manifest.batches.slice(0, batchIndex).reduce((sum, item) => sum + item.requestCount, 0);
+  return manifest.files[chunkOffset + customIndex] || null;
 }
 
 async function collectBatch({ apiKey, manifest, batch }) {
@@ -44,10 +54,8 @@ async function collectBatch({ apiKey, manifest, batch }) {
   for (const line of outputText.split(/\r?\n/)) {
     if (!line.trim()) continue;
     const row = JSON.parse(line);
-    const customIndex = Number(String(row.custom_id).split("-").at(-1)) - 1;
     const batchIndex = manifest.batches.findIndex((item) => item.id === batch.id);
-    const chunkOffset = manifest.batches.slice(0, batchIndex).reduce((sum, item) => sum + item.requestCount, 0);
-    const file = manifest.files[chunkOffset + customIndex];
+    const file = findFileForRow(manifest, batch, row, batchIndex);
     if (!file) continue;
 
     if (row.error || row.response?.status_code >= 400) {
@@ -75,6 +83,7 @@ async function collectBatch({ apiKey, manifest, batch }) {
   }
 
   batch.completed = true;
+  batch.status = "completed";
   batch.completedAt = new Date().toISOString();
   return true;
 }

@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     const files = Array.isArray(payload.files) ? payload.files : [];
     if (!files.length) throw new Error("Upload at least one source image.");
     for (const file of files) {
-      if (!file.sourceUrl || !file.guideUrl) throw new Error("Each file needs sourceUrl and guideUrl.");
+      if (!file.sourceUrl) throw new Error("Each file needs sourceUrl.");
     }
 
     const jobId = payload.jobId || createJobId();
@@ -48,15 +48,18 @@ export default async function handler(req, res) {
     const batches = [];
 
     for (const [batchIndex, items] of chunk(files, chunkSize).entries()) {
-      const lines = items.map((file, itemIndex) =>
+      const batchItems = items.map((file, itemIndex) => ({
+        fileIndex: batchIndex * chunkSize + itemIndex,
+        customId: `${jobId}-${String(batchIndex + 1).padStart(3, "0")}-${String(itemIndex + 1).padStart(3, "0")}`
+      }));
+      const lines = batchItems.map((item) =>
         buildBatchLine({
-          customId: `${jobId}-${String(batchIndex + 1).padStart(3, "0")}-${String(itemIndex + 1).padStart(3, "0")}`,
+          customId: item.customId,
           model,
           quality,
           brandName: payload.brandName || "",
           instructions: payload.instructions || "",
-          sourceUrl: file.sourceUrl,
-          guideUrl: file.guideUrl
+          sourceUrl: files[item.fileIndex].sourceUrl
         })
       );
       const inputFile = await uploadOpenAIFile(apiKey, {
@@ -78,6 +81,7 @@ export default async function handler(req, res) {
         inputFileId: inputFile.id,
         status: batch.status,
         requestCount: items.length,
+        items: batchItems,
         outputFileId: null,
         errorFileId: null,
         completed: false,
@@ -90,6 +94,7 @@ export default async function handler(req, res) {
       mode: "hosted-openai-batch",
       status: "submitted",
       brandName: payload.brandName || "",
+      instructions: payload.instructions || "",
       quality,
       chunkSize,
       createdAt: new Date().toISOString(),
@@ -98,7 +103,6 @@ export default async function handler(req, res) {
         name: file.name || `cover-${index + 1}`,
         safeName: safeName(file.name || `cover-${index + 1}`),
         sourceUrl: file.sourceUrl,
-        guideUrl: file.guideUrl,
         status: "submitted",
         outputUrl: null,
         error: null

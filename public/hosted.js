@@ -1,6 +1,5 @@
 import { upload } from "https://esm.sh/@vercel/blob@latest/client";
 
-const DESIGN = { width: 400, height: 533, footerHeight: 116, titleCenterY: Math.round(533 * 0.618) };
 const state = {
   files: [],
   jobId: new URLSearchParams(location.search).get("jobId") || localStorage.getItem("hosted.jobId") || "",
@@ -18,6 +17,7 @@ const els = {
   submitBtn: document.querySelector("#submitBtn"),
   refreshBtn: document.querySelector("#refreshBtn"),
   collectBtn: document.querySelector("#collectBtn"),
+  retryFailedBtn: document.querySelector("#retryFailedBtn"),
   downloadZipBtn: document.querySelector("#downloadZipBtn"),
   jobTitle: document.querySelector("#jobTitle"),
   jobMeta: document.querySelector("#jobMeta"),
@@ -43,68 +43,6 @@ function safeName(name) {
     .replace(/[^a-z0-9._-]+/gi, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 90) || "cover";
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Could not load image."));
-    img.src = src;
-  });
-}
-
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-function coverRect(sourceW, sourceH, destW, destH) {
-  const scale = Math.max(destW / sourceW, destH / sourceH);
-  const width = sourceW * scale;
-  const height = sourceH * scale;
-  return { x: (destW - width) / 2, y: (destH - height) / 2, width, height };
-}
-
-function drawCover(ctx, img, x, y, width, height) {
-  const rect = coverRect(img.naturalWidth, img.naturalHeight, width, height);
-  ctx.drawImage(img, x + rect.x, y + rect.y, rect.width, rect.height);
-}
-
-function drawContain(ctx, img, x, y, width, height, alignY = 0.5) {
-  const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
-  const imageW = img.naturalWidth * scale;
-  const imageH = img.naturalHeight * scale;
-  ctx.drawImage(img, x + (width - imageW) / 2, y + (height - imageH) * alignY, imageW, imageH);
-}
-
-async function makeGuideBlob(file) {
-  const sourceUrl = await fileToDataUrl(file);
-  const img = await loadImage(sourceUrl);
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  canvas.width = DESIGN.width;
-  canvas.height = DESIGN.height;
-
-  ctx.save();
-  ctx.filter = "blur(8px) saturate(1.12)";
-  drawCover(ctx, img, -16, -22, DESIGN.width + 32, DESIGN.height + 44);
-  ctx.restore();
-
-  drawContain(ctx, img, 0, 12, DESIGN.width, DESIGN.titleCenterY + 118, 0.5);
-
-  const fade = ctx.createLinearGradient(0, DESIGN.height - DESIGN.footerHeight * 1.25, 0, DESIGN.height);
-  fade.addColorStop(0, "rgba(10,10,8,0)");
-  fade.addColorStop(0.58, "rgba(20,15,10,.48)");
-  fade.addColorStop(1, "rgba(6,8,12,.82)");
-  ctx.fillStyle = fade;
-  ctx.fillRect(0, DESIGN.height - DESIGN.footerHeight * 1.25, DESIGN.width, DESIGN.height);
-
-  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
 }
 
 async function postJson(url, payload) {
@@ -249,7 +187,7 @@ async function submitHostedJob() {
   const jobId = `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   const accessCode = els.accessCode.value.trim();
   const uploaded = [];
-  const totalSteps = state.files.length * 2;
+  const totalSteps = state.files.length;
   let done = 0;
 
   for (const file of state.files) {
@@ -262,16 +200,7 @@ async function submitHostedJob() {
     });
     done += 1;
     updateProgress(done, totalSteps, "Uploaded assets");
-
-    const guideBlob = await makeGuideBlob(file);
-    const guide = await upload(`hosted/jobs/${jobId}/guides/${base}.jpg`, guideBlob, {
-      access: "public",
-      handleUploadUrl: "/api/hosted-upload",
-      clientPayload
-    });
-    done += 1;
-    updateProgress(done, totalSteps, "Uploaded assets");
-    uploaded.push({ name: file.name, sourceUrl: source.url, guideUrl: guide.url });
+    uploaded.push({ name: file.name, sourceUrl: source.url });
   }
 
   const result = await postJson("/api/hosted-submit", {
@@ -297,6 +226,7 @@ function renderManifest(manifest) {
   els.jobMeta.textContent = `${manifest.status} · ${completed}/${manifest.files.length} completed · ${failed} failed`;
   els.progress.value = manifest.files.length ? Math.round((completed / manifest.files.length) * 100) : 0;
   els.downloadZipBtn.disabled = completed === 0;
+  els.retryFailedBtn.disabled = failed === 0;
   els.results.innerHTML = "";
 
   for (const file of manifest.files) {
@@ -344,6 +274,19 @@ async function collectNow() {
   await refreshStatus();
 }
 
+async function retryFailed() {
+  if (!state.jobId) throw new Error("No hosted job id yet.");
+  const data = await postJson("/api/hosted-retry", {
+    jobId: state.jobId,
+    accessCode: els.accessCode.value.trim(),
+    quality: els.quality.value,
+    chunkSize: Number(els.chunkSize.value || 10),
+    instructions: els.instructions.value.trim()
+  });
+  renderManifest(data.manifest);
+  setStatus(`Retried ${data.retried} failed image(s). You can close this page again.`);
+}
+
 els.imageInput.addEventListener("change", (event) => {
   state.files = Array.from(event.target.files || []);
   els.imageCount.textContent = state.files.length ? `${state.files.length} image(s) selected` : "No images selected";
@@ -363,6 +306,7 @@ els.submitBtn.addEventListener("click", async () => {
 
 els.refreshBtn.addEventListener("click", () => refreshStatus().catch((error) => setStatus(error.message, true)));
 els.collectBtn.addEventListener("click", () => collectNow().catch((error) => setStatus(error.message, true)));
+els.retryFailedBtn.addEventListener("click", () => retryFailed().catch((error) => setStatus(error.message, true)));
 els.downloadZipBtn.addEventListener("click", () => downloadCompletedZip().catch((error) => setStatus(error.message, true)));
 
 if (state.jobId) refreshStatus().catch(() => {});

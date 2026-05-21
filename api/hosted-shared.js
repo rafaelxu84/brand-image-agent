@@ -49,7 +49,7 @@ export function promptText({ brandName, instructions }) {
   return [
     "Create a premium iGaming portrait cover image from the first reference image.",
     brandName ? `Brand name: ${brandName}.` : "Brand name is unknown.",
-    "Use the second reference image as the exact composition guide.",
+    "Use the source image itself as the composition reference.",
     "Do not add any brand logo, provider logo, watermark, badge, UI label, footer plaque, or lower-left brand mark.",
     "Exact output layout: final visual is a 400px wide by 533px high canvas. The game title block must be centered and scaled to nearly fill the 360px safe width. If the title is smaller than 340px wide, enlarge it; if wider than 360px, shrink it. Target title width is 350-360px with crisp readable lettering.",
     "Golden composition rule: place the visual center of the game title block around y=329px on the 400x533 canvas. Acceptable title-center range is y=305-345px. Keep the title centered horizontally, large, exposed, and readable.",
@@ -63,7 +63,7 @@ export function promptText({ brandName, instructions }) {
     .join("\n");
 }
 
-export function buildBatchLine({ customId, model, quality, brandName, instructions, sourceUrl, guideUrl }) {
+export function buildBatchLine({ customId, model, quality, brandName, instructions, sourceUrl }) {
   return JSON.stringify({
     custom_id: customId,
     method: "POST",
@@ -75,8 +75,7 @@ export function buildBatchLine({ customId, model, quality, brandName, instructio
           role: "user",
           content: [
             { type: "input_text", text: promptText({ brandName, instructions }) },
-            { type: "input_image", image_url: sourceUrl },
-            { type: "input_image", image_url: guideUrl }
+            { type: "input_image", image_url: sourceUrl }
           ]
         }
       ],
