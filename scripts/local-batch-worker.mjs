@@ -9,9 +9,7 @@ const DESIGN = {
   height: 533,
   footerHeight: 116,
   titleMaxWidth: 360,
-  titleBottomY: 413,
-  logoLeft: 40,
-  logoMaxWidth: 230
+  titleCenterY: Math.round(533 * 0.618)
 };
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -24,6 +22,7 @@ function parseArgs(argv) {
     quality: "medium",
     concurrency: 1,
     delayMs: 1500,
+    force: false,
     retryFailed: false,
     dryRun: false
   };
@@ -34,6 +33,8 @@ function parseArgs(argv) {
       args.help = true;
     } else if (arg === "--retry-failed") {
       args.retryFailed = true;
+    } else if (arg === "--force") {
+      args.force = true;
     } else if (arg === "--dry-run") {
       args.dryRun = true;
     } else if (arg.startsWith("--")) {
@@ -59,7 +60,6 @@ Local iGaming cover batch worker
 Usage:
   OPENAI_API_KEY=sk-... npm run batch:local -- \\
     --input /path/to/source-images \\
-    --logo /path/to/logo.png \\
     --output /path/to/output-folder \\
     --quality medium
 
@@ -67,6 +67,7 @@ Options:
   --quality low|medium|high    Default: medium
   --concurrency 1              Default: 1, recommended for reliability
   --delay-ms 1500              Pause between requests per worker
+  --force                      Regenerate completed files too
   --retry-failed               Retry files previously marked failed
   --dry-run                    List images without calling OpenAI
 `.trim();
@@ -139,7 +140,7 @@ function gradientSvg() {
 </svg>`);
 }
 
-async function makeGuide(sourcePath, logoPath) {
+async function makeGuide(sourcePath) {
   const sourceMeta = await sharp(sourcePath).rotate().metadata();
   const sourceWidth = sourceMeta.width || DESIGN.width;
   const sourceHeight = sourceMeta.height || DESIGN.height;
@@ -152,7 +153,7 @@ async function makeGuide(sourcePath, logoPath) {
     .toBuffer();
 
   const artTop = 0;
-  const artHeight = DESIGN.titleBottomY + 44;
+  const artHeight = DESIGN.titleCenterY + 118;
   const artScale = Math.min(DESIGN.width / sourceWidth, artHeight / sourceHeight);
   const artWidth = Math.max(1, Math.round(sourceWidth * artScale));
   const artDrawHeight = Math.max(1, Math.round(sourceHeight * artScale));
@@ -163,21 +164,10 @@ async function makeGuide(sourcePath, logoPath) {
     .resize(artWidth, artDrawHeight, { fit: "fill" })
     .toBuffer();
 
-  const logoMeta = await sharp(logoPath).metadata();
-  const logoSourceWidth = logoMeta.width || DESIGN.logoMaxWidth;
-  const logoSourceHeight = logoMeta.height || DESIGN.footerHeight;
-  const logoMaxHeight = Math.round(DESIGN.footerHeight * 0.72);
-  const logoScale = Math.min(DESIGN.logoMaxWidth / logoSourceWidth, logoMaxHeight / logoSourceHeight, 1);
-  const logoWidth = Math.max(1, Math.round(logoSourceWidth * logoScale));
-  const logoHeight = Math.max(1, Math.round(logoSourceHeight * logoScale));
-  const logoTop = Math.round(DESIGN.height - DESIGN.footerHeight + (DESIGN.footerHeight - logoHeight) / 2);
-  const logo = await sharp(logoPath).resize(logoWidth, logoHeight, { fit: "inside" }).png().toBuffer();
-
   const guide = await sharp(background)
     .composite([
       { input: artwork, left: artLeft, top: artTopOffset },
-      { input: gradientSvg(), left: 0, top: 0 },
-      { input: logo, left: DESIGN.logoLeft, top: logoTop }
+      { input: gradientSvg(), left: 0, top: 0 }
     ])
     .jpeg({ quality: 82 })
     .toBuffer();
@@ -199,13 +189,12 @@ function buildPrompt({ brandName, instructions }) {
   return [
     "Create a premium iGaming portrait cover image from the first reference image.",
     brandName ? `Brand name: ${brandName}.` : "Brand name is unknown.",
-    "Use the second reference image as the brand logo.",
-    "Use the third reference image as the exact composition guide.",
+    "Use the second reference image as the exact composition guide.",
+    "Do not add any brand logo, provider logo, watermark, badge, UI label, footer plaque, or lower-left brand mark.",
     "Exact output layout standard: final visual is a 400px wide by 533px high canvas. The game title block must be centered and scaled to nearly fill the 360px safe width. If the title is smaller than 340px wide, enlarge it; if wider than 360px, shrink it. Target title width is 350-360px with crisp readable lettering.",
-    "The title bottom should align around y=413px, exactly 120px above the canvas bottom.",
-    "Logo placement: left edge x=40px, maximum logo width 230px, preserve aspect ratio, vertically centered within the bottom 116px zone.",
+    "Golden composition rule: place the visual center of the game title block around y=329px on the 400x533 canvas. Acceptable title-center range is y=305-345px. Keep the title centered horizontally, large, exposed, and readable.",
     "Do not crop, trim, zoom into, or cut off important original source information. Keep full game title, top multipliers, upper decorations, corner characters, side creatures, main subject, and readable text visible. If space is tight, zoom out and extend/rebuild surrounding background.",
-    "Create a cinematic lower dark/smoky/soft-gradient obstruction that covers busy background detail but does not hide the game title.",
+    "Create a cinematic lower dark/smoky/soft-gradient obstruction in the lower 14-22% that covers busy background detail but does not hide the game title.",
     "Preserve original title text as accurately as possible. Do not invent new words, buttons, UI, jackpot badges, watermarks, or borders.",
     "Make the result sharp, premium, balanced, readable, and commercially polished.",
     instructions ? `Additional direction: ${instructions}` : ""
@@ -214,7 +203,7 @@ function buildPrompt({ brandName, instructions }) {
     .join("\n");
 }
 
-async function callOpenAI({ apiKey, model, quality, brandName, instructions, sourceImage, logoImage, guideImage }) {
+async function callOpenAI({ apiKey, model, quality, brandName, instructions, sourceImage, guideImage }) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -229,7 +218,6 @@ async function callOpenAI({ apiKey, model, quality, brandName, instructions, sou
           content: [
             { type: "input_text", text: buildPrompt({ brandName, instructions }) },
             { type: "input_image", image_url: sourceImage },
-            { type: "input_image", image_url: logoImage },
             { type: "input_image", image_url: guideImage }
           ]
         }
@@ -263,12 +251,12 @@ async function writeManifest(manifestPath, manifest) {
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-async function processOne({ filePath, args, apiKey, model, logoDataUrl, manifest, manifestPath }) {
+async function processOne({ filePath, args, apiKey, model, manifest, manifestPath }) {
   const key = path.basename(filePath);
   const record = manifest.files[key] || {};
   const outputPath = path.join(args.output, `${safeBaseName(filePath)}-ai-portrait.png`);
 
-  if (record.status === "completed" && !args.retryFailed && (await pathExists(outputPath))) {
+  if (record.status === "completed" && !args.retryFailed && !args.force && (await pathExists(outputPath))) {
     console.log(`skip completed: ${key}`);
     return;
   }
@@ -289,7 +277,7 @@ async function processOne({ filePath, args, apiKey, model, logoDataUrl, manifest
     console.log(`start: ${key}`);
     const [sourceImage, guideImage] = await Promise.all([
       imageToDataUrl(filePath, { maxSide: 1280, format: "jpeg", quality: 84 }),
-      makeGuide(filePath, args.logo)
+      makeGuide(filePath)
     ]);
     const generated = await callOpenAI({
       apiKey,
@@ -298,7 +286,6 @@ async function processOne({ filePath, args, apiKey, model, logoDataUrl, manifest
       brandName: args.brand || "",
       instructions: args.instructions || "",
       sourceImage,
-      logoImage: logoDataUrl,
       guideImage
     });
     const finalBuffer = await resizeFinalImage(generated);
@@ -331,7 +318,7 @@ async function main() {
     console.log(usage());
     process.exit(0);
   }
-  if (!args.input || !args.logo) {
+  if (!args.input) {
     console.log(usage());
     process.exit(1);
   }
@@ -340,7 +327,7 @@ async function main() {
   args.concurrency = Math.max(1, Math.min(4, Number(args.concurrency) || 1));
   args.delayMs = Math.max(0, Number(args.delayMs) || 0);
   args.input = path.resolve(args.input);
-  args.logo = path.resolve(args.logo);
+  if (args.logo) args.logo = path.resolve(args.logo);
   args.output = path.resolve(args.output);
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -360,13 +347,12 @@ async function main() {
     return;
   }
 
-  const logoDataUrl = await imageToDataUrl(args.logo, { maxSide: 512, format: "png" });
   let nextIndex = 0;
   async function worker(workerId) {
     while (nextIndex < files.length) {
       const filePath = files[nextIndex];
       nextIndex += 1;
-      await processOne({ filePath, args, apiKey, model, logoDataUrl, manifest, manifestPath });
+      await processOne({ filePath, args, apiKey, model, manifest, manifestPath });
       if (args.delayMs) await sleep(args.delayMs + workerId * 150);
     }
   }

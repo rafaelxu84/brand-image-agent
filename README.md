@@ -2,9 +2,8 @@
 
 An online agent for turning brand/game art into portrait marketing images like the Figma reference:
 
-- upload one brand logo
 - upload a batch of source images
-- generate 400:533 portrait-style outputs with a preserved hero area, extended footer, and logo placement
+- generate 400:533 portrait-style outputs with preserved hero/title information and a golden-ratio title position
 - optionally call OpenAI image generation for AI-enhanced background extension
 
 ## Local preview
@@ -19,7 +18,10 @@ Then open `http://localhost:4173/public/`.
 
 ## Local batch worker for hundreds of images
 
-For 600+ images, use the local GUI/worker instead of keeping the online browser tab alive. It processes a folder one image at a time, writes completed covers to disk, and saves `_manifest.json` so it can resume after interruption.
+For 600+ images, use the local GUI/worker instead of keeping the online browser tab alive. It has two modes:
+
+- `OpenAI Batch API`: lower-cost asynchronous jobs. This is best for large folders and writes `_batch_manifest.json`.
+- `Live local requests`: one-by-one immediate generation. This writes `_manifest.json`.
 
 Install dependencies once:
 
@@ -45,14 +47,15 @@ Fill in the source image folder, logo path, output folder, quality, and optional
 
 The GUI shows live logs and completed/failed counts. `Stop` safely stops the worker; rerun with `Retry failed only` to retry failures.
 
+For high-volume runs, keep `Processing mode` set to `OpenAI Batch API - lowest cost`. It uploads local image references to OpenAI Files with `purpose=vision`, creates `/v1/responses` batch jobs, waits for completion, and saves final `400x533` PNG files back to the output folder. No Cloudflare, R2, or Vercel Blob account is required for local Batch API mode. The current generation mode does not add brand/provider logos; it only expands and recomposes the source artwork.
+
 ### CLI mode
 
-Run a batch:
+Run a live one-by-one batch:
 
 ```bash
 OPENAI_API_KEY=sk-... npm run batch:local -- \
   --input "/path/to/source-images" \
-  --logo "/path/to/logo.png" \
   --output "/path/to/output-folder" \
   --quality medium \
   --concurrency 1
@@ -62,10 +65,29 @@ Useful options:
 
 - `--quality low` for cheaper drafts, `medium` for normal batches, `high` for final selected covers.
 - `--concurrency 1` is safest. Use `2` only if rate limits are healthy.
+- `--force` regenerates completed files too.
 - `--retry-failed` retries only files marked failed in `_manifest.json`.
 - `--dry-run` lists images without calling OpenAI.
 
 Outputs are final `400x533` PNG files named like `GameName-ai-portrait.png`.
+
+Run an OpenAI Batch API job:
+
+```bash
+OPENAI_API_KEY=sk-... npm run batch:api -- \
+  --input "/path/to/source-images" \
+  --output "/path/to/output-folder" \
+  --quality medium \
+  --chunk-size 100
+```
+
+Useful Batch API options:
+
+- `--chunk-size 100` splits large folders into manageable OpenAI batch jobs.
+- `--no-wait` submits jobs and exits; run the same command later to collect finished results.
+- `--force` regenerates completed files too.
+- `--retry-failed` resubmits files marked failed/expired/cancelled in `_batch_manifest.json`.
+- `--dry-run` lists images without uploading files or creating batches.
 
 ## OpenAI setup
 

@@ -1,6 +1,4 @@
 const state = {
-  logo: null,
-  logoUrl: "",
   files: [],
   selectedIndex: 0,
   outputs: []
@@ -8,13 +6,10 @@ const state = {
 
 const els = {
   brandName: document.querySelector("#brandName"),
-  logoInput: document.querySelector("#logoInput"),
   imageInput: document.querySelector("#imageInput"),
-  logoName: document.querySelector("#logoName"),
   imageCount: document.querySelector("#imageCount"),
   exportWidth: document.querySelector("#exportWidth"),
   footerRatio: document.querySelector("#footerRatio"),
-  logoScale: document.querySelector("#logoScale"),
   aiQuality: document.querySelector("#aiQuality"),
   instructions: document.querySelector("#instructions"),
   apiKey: document.querySelector("#apiKey"),
@@ -37,9 +32,7 @@ const MAX_AI_PAYLOAD_CHARS = 3.7 * 1024 * 1024;
 const DESIGN_SIZE = { width: 400, height: 533 };
 const DESIGN_FOOTER_HEIGHT = 116;
 const DESIGN_TITLE_MAX_WIDTH = 360;
-const DESIGN_TITLE_BOTTOM_Y = DESIGN_SIZE.height - 120;
-const DESIGN_LOGO_LEFT = 40;
-const DESIGN_LOGO_MAX_WIDTH = 230;
+const DESIGN_TITLE_CENTER_Y = Math.round(DESIGN_SIZE.height * 0.618);
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
@@ -109,7 +102,7 @@ async function readJsonResponse(response) {
     const cleanText = text.trim() || response.statusText || "Request failed";
     return {
       error: cleanText.startsWith("Request Entity")
-        ? "The image request is too large. The app now compresses images automatically; try a smaller source image or logo if this persists."
+        ? "The image request is too large. The app now compresses images automatically; try a smaller source image if this persists."
         : cleanText
     };
   }
@@ -154,12 +147,7 @@ function getOutputSize() {
 }
 
 async function generateCanvasOutput(file, previewOnly = false, options = {}) {
-  if (!state.logoUrl) throw new Error("Upload a logo first.");
-
-  const [sourceUrl, logoImg] = await Promise.all([
-    fileToDataUrl(file),
-    loadImage(state.logoUrl)
-  ]);
+  const sourceUrl = await fileToDataUrl(file);
   const sourceImg = await loadImage(sourceUrl);
   const size = options.size || (previewOnly ? { width: 400, height: 533 } : getOutputSize());
   const scale = size.width / DESIGN_SIZE.width;
@@ -177,20 +165,19 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   ctx.restore();
 
   if (options.protectArtwork) {
-    const artTop = Math.round(0 * scale);
-    const titleBottomY = Math.round(DESIGN_TITLE_BOTTOM_Y * scale);
-    const artHeight = Math.round(titleBottomY - artTop + 44 * scale);
-    drawContain(ctx, sourceImg, 0, artTop, size.width, artHeight, 0.56);
+    const artTop = Math.round(12 * scale);
+    const artHeight = Math.round((DESIGN_TITLE_CENTER_Y + 118) * scale);
+    drawContain(ctx, sourceImg, 0, artTop, size.width, artHeight, 0.5);
   } else {
     drawHeightFit(ctx, sourceImg, size.width, size.height);
   }
 
-  const fade = ctx.createLinearGradient(0, size.height - footerH * 1.55, 0, size.height);
+  const fade = ctx.createLinearGradient(0, size.height - footerH * 1.25, 0, size.height);
   fade.addColorStop(0, "rgba(10, 10, 8, 0)");
-  fade.addColorStop(0.52, "rgba(20, 15, 10, 0.66)");
-  fade.addColorStop(1, "rgba(6, 8, 12, 0.95)");
+  fade.addColorStop(0.58, "rgba(20, 15, 10, 0.48)");
+  fade.addColorStop(1, "rgba(6, 8, 12, 0.82)");
   ctx.fillStyle = fade;
-  ctx.fillRect(0, Math.max(0, size.height - footerH * 1.55), size.width, size.height);
+  ctx.fillRect(0, Math.max(0, size.height - footerH * 1.25), size.width, size.height);
 
   const vignette = ctx.createRadialGradient(
     size.width / 2,
@@ -204,20 +191,6 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   vignette.addColorStop(1, "rgba(0, 0, 0, 0.32)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, size.width, size.height);
-
-  const maxLogoW = DESIGN_LOGO_MAX_WIDTH * scale;
-  const maxLogoH = footerH * 0.72;
-  const logoScale = Math.min(maxLogoW / logoImg.naturalWidth, maxLogoH / logoImg.naturalHeight);
-  const logoW = logoImg.naturalWidth * logoScale;
-  const logoH = logoImg.naturalHeight * logoScale;
-  const logoX = DESIGN_LOGO_LEFT * scale;
-  const logoY = size.height - footerH + (footerH - logoH) / 2;
-
-  ctx.shadowColor = "rgba(0, 0, 0, 0.42)";
-  ctx.shadowBlur = size.width * 0.018;
-  ctx.shadowOffsetY = size.height * 0.006;
-  ctx.drawImage(logoImg, logoX, logoY, logoW, logoH);
-  ctx.shadowColor = "transparent";
 
   return {
     name: file.name.replace(/\.[^.]+$/, ""),
@@ -433,7 +406,6 @@ function downloadOutputsZip() {
 async function generateBatch() {
   try {
     if (!state.files.length) throw new Error("Upload at least one source image.");
-    if (!state.logoUrl) throw new Error("Upload a logo first.");
 
     setStatus(`Generating ${state.files.length} canvas image(s)...`);
     state.outputs = [];
@@ -456,7 +428,6 @@ async function expandSelected() {
   try {
     const file = state.files[state.selectedIndex];
     if (!file) throw new Error("Select a source image first.");
-    if (!state.logoUrl) throw new Error("Upload a logo first.");
 
     setStatus("Expanding selected image...");
     const output = await generateCanvasOutput(file);
@@ -471,9 +442,8 @@ async function expandSelected() {
 
 async function generateAiForFile(file) {
   setStatus(`Compressing ${file.name} for AI...`);
-  const [sourceImage, logoImage, referenceOutput] = await Promise.all([
+  const [sourceImage, referenceOutput] = await Promise.all([
       compressImageForApi(file, 1280, "image/jpeg", 0.84),
-      compressImageForApi(state.logoUrl, 512, "image/png"),
       generateCanvasOutput(file, false, {
         size: { width: 400, height: 533 },
         mime: "image/jpeg",
@@ -483,14 +453,13 @@ async function generateAiForFile(file) {
   ]);
 
   const guideText = [
-    "Use the third reference image as the exact cover layout guide.",
+    "Use the second reference image as the exact cover layout guide.",
     "Follow the exact 400x533 coordinate standard from the guide. Game title visual block must be scaled to nearly fill the 360px title safe width. If the title is smaller than 340px wide, enlarge it; if it is wider than 360px, shrink it. Target title width is 350-360px.",
-    "The title bottom should align around y=413px, exactly 120px above the canvas bottom. Keep title centered horizontally and highly readable.",
-    "The logo must be in the bottom 116px area, vertically centered inside that area, with a 40px left margin and maximum visual width 230px.",
+    "Golden composition: place the visual center of the game title block around y=329px on the 400x533 canvas. Acceptable title-center range is y=305-345px. Keep title centered horizontally and highly readable.",
+    "Do not add any brand logo, provider logo, watermark, footer plaque, or lower-left mark.",
     "Keep all important source artwork visible: top text, multipliers, upper decorations, edge/corner characters, side creatures, main subject, and full game title.",
     "Do not zoom in or crop the original information. If space is tight, zoom out and extend the environment/background.",
-    "Improve the lower mask so it feels like natural smoke, shadow, or lighting from the original image.",
-    "Keep the logo at the guide position, not lower than the guide."
+    "Improve the lower mask so it feels like natural smoke, shadow, or lighting from the original image, but do not cover the title."
   ].join(" ");
 
   const quality = els.aiQuality.value || "medium";
@@ -499,14 +468,13 @@ async function generateAiForFile(file) {
     brandName: els.brandName.value.trim(),
     instructions: [guideText, els.instructions.value.trim()].filter(Boolean).join("\n"),
     sourceImage,
-    logoImage,
     referenceImage: referenceOutput.outputUrl,
     apiKey: els.apiKey.value.trim(),
     quality
   };
   const body = JSON.stringify(payload);
   if (body.length > MAX_AI_PAYLOAD_CHARS) {
-    throw new Error("The selected assets are still too large for the AI request. Try a smaller source image or a compressed logo.");
+    throw new Error("The selected assets are still too large for the AI request. Try a smaller or more compressed source image.");
   }
 
   const response = await fetch("/api/generate", {
@@ -536,7 +504,6 @@ async function generateAiSelected() {
   try {
     const file = state.files[state.selectedIndex];
     if (!file) throw new Error("Select a source image first.");
-    if (!state.logoUrl) throw new Error("Upload a logo first.");
 
     const output = await generateAiForFile(file);
     state.outputs.unshift(output);
@@ -558,7 +525,6 @@ async function generateAiBatch() {
   els.aiBatchBtn.disabled = true;
   try {
     if (!state.files.length) throw new Error("Upload at least one source image.");
-    if (!state.logoUrl) throw new Error("Upload a logo first.");
 
     state.outputs = [];
     for (let index = 0; index < state.files.length; index += 1) {
@@ -579,14 +545,6 @@ async function generateAiBatch() {
   }
 }
 
-els.logoInput.addEventListener("change", async (event) => {
-  const [file] = event.target.files;
-  state.logo = file || null;
-  state.logoUrl = file ? await fileToDataUrl(file) : "";
-  els.logoName.textContent = file ? file.name : "No logo selected";
-  selectImage(state.selectedIndex);
-});
-
 els.imageInput.addEventListener("change", (event) => {
   state.files = Array.from(event.target.files || []);
   state.outputs = [];
@@ -595,7 +553,7 @@ els.imageInput.addEventListener("change", (event) => {
   selectImage(0);
 });
 
-for (const input of [els.exportWidth, els.footerRatio, els.logoScale]) {
+for (const input of [els.exportWidth, els.footerRatio]) {
   input.addEventListener("input", () => selectImage(state.selectedIndex));
 }
 

@@ -8,6 +8,7 @@
     "start": "vercel dev",
     "preview": "python3 -m http.server 4173",
     "batch:local": "node scripts/local-batch-worker.mjs",
+    "batch:api": "node scripts/local-batch-api-worker.mjs",
     "batch:gui": "node scripts/local-batch-gui.mjs"
   },
   "engines": {

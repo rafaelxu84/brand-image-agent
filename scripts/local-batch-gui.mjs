@@ -43,22 +43,24 @@ async function readJson(req) {
 }
 
 function argList(config) {
+  const isOpenAIBatch = config.mode === "batch-api";
   const args = [
-    path.join(rootDir, "scripts/local-batch-worker.mjs"),
+    path.join(rootDir, isOpenAIBatch ? "scripts/local-batch-api-worker.mjs" : "scripts/local-batch-worker.mjs"),
     "--input",
     config.input,
-    "--logo",
-    config.logo,
     "--output",
     config.output,
     "--quality",
     config.quality || "medium",
-    "--concurrency",
-    String(config.concurrency || 1),
-    "--delay-ms",
-    String(config.delayMs || 1500)
   ];
+  if (isOpenAIBatch) {
+    args.push("--chunk-size", String(config.chunkSize || 100), "--poll-ms", String(config.pollMs || 60000));
+    if (config.noWait) args.push("--no-wait");
+  } else {
+    args.push("--concurrency", String(config.concurrency || 1), "--delay-ms", String(config.delayMs || 1500));
+  }
   if (config.retryFailed) args.push("--retry-failed");
+  if (config.force) args.push("--force");
   if (config.dryRun) args.push("--dry-run");
   if (config.brand) args.push("--brand", config.brand);
   if (config.instructions) args.push("--instructions", config.instructions);
@@ -67,6 +69,27 @@ function argList(config) {
 
 async function readManifestSummary(outputDir) {
   if (!outputDir) return null;
+  const batchManifestPath = path.join(outputDir, "_batch_manifest.json");
+  if (await fileExists(batchManifestPath)) {
+    try {
+      const manifest = JSON.parse(await fs.readFile(batchManifestPath, "utf8"));
+      const records = Object.values(manifest.files || {});
+      return {
+        total: records.length,
+        completed: records.filter((item) => item.status === "completed").length,
+        failed: records.filter((item) => item.status === "failed" || item.status === "expired" || item.status === "cancelled").length,
+        running: records.filter((item) => item.status === "running" || item.status === "submitted" || item.status === "preparing").length,
+        updatedAt: manifest.updatedAt || manifest.createdAt || null,
+        failedItems: Object.entries(manifest.files || {})
+          .filter(([, item]) => item.status === "failed" || item.status === "expired" || item.status === "cancelled")
+          .slice(0, 50)
+          .map(([name, item]) => ({ name, error: item.error || "" }))
+      };
+    } catch {
+      return null;
+    }
+  }
+
   const manifestPath = path.join(outputDir, "_manifest.json");
   try {
     const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
@@ -87,14 +110,23 @@ async function readManifestSummary(outputDir) {
   }
 }
 
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function startJob(config) {
   if (currentJob?.running) throw new Error("A batch is already running.");
-  if (!config.input || !config.logo || !config.output) {
-    throw new Error("Input folder, logo path, and output folder are required.");
+  if (!config.input || !config.output) {
+    throw new Error("Input folder and output folder are required.");
   }
 
   logs.length = 0;
-  addLog("Starting local batch worker...");
+  addLog(config.mode === "batch-api" ? "Starting OpenAI Batch API worker..." : "Starting local live worker...");
   const env = { ...process.env };
   if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
   const child = spawn(process.execPath, argList(config), {
@@ -146,7 +178,6 @@ async function pickPath(kind) {
   const scripts = {
     input: 'POSIX path of (choose folder with prompt "Choose the source image folder")',
     output: 'POSIX path of (choose folder with prompt "Choose the output folder")',
-    logo: 'POSIX path of (choose file with prompt "Choose the logo file" of type {"public.image"})'
   };
   if (!scripts[kind]) throw new Error("Unknown picker type.");
 
@@ -187,6 +218,7 @@ const html = String.raw`<!doctype html>
       button.danger { background:transparent; border-color:var(--danger); color:var(--danger); }
       .path-row { display:grid; grid-template-columns:minmax(0,1fr) 92px; gap:8px; }
       .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .hidden { display:none; }
       .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px; }
       .stat { border:1px solid var(--line); padding:12px; background:#111710; }
       .stat strong { display:block; font-size:24px; }
@@ -200,8 +232,13 @@ const html = String.raw`<!doctype html>
     <main>
       <aside>
         <h1>Local Batch Console</h1>
+        <label>Processing mode
+          <select id="mode">
+            <option value="batch-api" selected>OpenAI Batch API - lowest cost</option>
+            <option value="live">Live local requests - immediate</option>
+          </select>
+        </label>
         <label>Source image folder <span class="path-row"><input id="input" placeholder="/Users/rafa/Downloads/source-images" /><button id="pickInput" class="secondary" type="button">Browse</button></span></label>
-        <label>Logo file path <span class="path-row"><input id="logo" placeholder="/Users/rafa/Downloads/logo.png" /><button id="pickLogo" class="secondary" type="button">Browse</button></span></label>
         <label>Output folder <span class="path-row"><input id="output" placeholder="/Users/rafa/Downloads/cover-output" /><button id="pickOutput" class="secondary" type="button">Browse</button></span></label>
         <label>OpenAI API key <input id="apiKey" type="password" placeholder="Optional if exported in terminal" /></label>
         <label>Brand name <input id="brand" placeholder="Pragmatic Play" /></label>
@@ -212,16 +249,20 @@ const html = String.raw`<!doctype html>
             <option value="high">High - final</option>
           </select>
         </label>
-        <label>Concurrency <input id="concurrency" type="number" min="1" max="4" value="1" /></label>
-        <label>Delay ms <input id="delayMs" type="number" min="0" value="1500" /></label>
+        <label class="live-row">Concurrency <input id="concurrency" type="number" min="1" max="4" value="1" /></label>
+        <label class="live-row">Delay ms <input id="delayMs" type="number" min="0" value="1500" /></label>
+        <label class="batch-row">Batch chunk size <input id="chunkSize" type="number" min="1" max="500" value="100" /></label>
+        <label class="batch-row">Poll seconds <input id="pollSeconds" type="number" min="10" value="60" /></label>
         <label>Extra instructions <textarea id="instructions" rows="4"></textarea></label>
         <label><span><input id="retryFailed" type="checkbox" /> Retry failed only</span></label>
+        <label><span><input id="force" type="checkbox" /> Regenerate all</span></label>
+        <label class="batch-row"><span><input id="noWait" type="checkbox" /> Submit only, collect later</span></label>
         <label><span><input id="dryRun" type="checkbox" /> Dry run</span></label>
         <div class="actions">
           <button id="start">Start</button>
           <button id="stop" class="danger">Stop</button>
         </div>
-        <p class="hint">Tip: keep concurrency at 1 for 600+ images. You can close and reopen this page; the worker writes progress to _manifest.json.</p>
+        <p class="hint">Tip: use OpenAI Batch API for 600+ images. It writes progress to _batch_manifest.json and can resume/collect later. No logo is added in this version.</p>
       </aside>
       <section>
         <div class="stats">
@@ -235,7 +276,7 @@ const html = String.raw`<!doctype html>
       </section>
     </main>
     <script>
-      const ids = ["input","logo","output","apiKey","brand","quality","concurrency","delayMs","instructions","retryFailed","dryRun"];
+      const ids = ["mode","input","output","apiKey","brand","quality","concurrency","delayMs","chunkSize","pollSeconds","instructions","retryFailed","force","noWait","dryRun"];
       const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
       const logs = document.getElementById("logs");
       const state = document.getElementById("state");
@@ -249,18 +290,32 @@ const html = String.raw`<!doctype html>
         }
         el[id].addEventListener("input", () => localStorage.setItem("batch." + id, el[id].type === "checkbox" ? el[id].checked : el[id].value));
       }
+      function syncModeFields() {
+        const isBatch = el.mode.value === "batch-api";
+        for (const node of document.querySelectorAll(".batch-row")) node.classList.toggle("hidden", !isBatch);
+        for (const node of document.querySelectorAll(".live-row")) node.classList.toggle("hidden", isBatch);
+      }
+      el.mode.addEventListener("change", () => {
+        localStorage.setItem("batch.mode", el.mode.value);
+        syncModeFields();
+      });
+      syncModeFields();
       function payload() {
         return {
+          mode: el.mode.value,
           input: el.input.value.trim(),
-          logo: el.logo.value.trim(),
           output: el.output.value.trim(),
           apiKey: el.apiKey.value.trim(),
           brand: el.brand.value.trim(),
           quality: el.quality.value,
           concurrency: Number(el.concurrency.value || 1),
           delayMs: Number(el.delayMs.value || 1500),
+          chunkSize: Number(el.chunkSize.value || 100),
+          pollMs: Number(el.pollSeconds.value || 60) * 1000,
           instructions: el.instructions.value.trim(),
           retryFailed: el.retryFailed.checked,
+          force: el.force.checked,
+          noWait: el.noWait.checked,
           dryRun: el.dryRun.checked
         };
       }
@@ -281,7 +336,6 @@ const html = String.raw`<!doctype html>
         }
       }
       document.getElementById("pickInput").onclick = () => pick("input", "input");
-      document.getElementById("pickLogo").onclick = () => pick("logo", "logo");
       document.getElementById("pickOutput").onclick = () => pick("output", "output");
       document.getElementById("start").onclick = async () => {
         try { await post("/api/start", payload()); await refresh(); }
