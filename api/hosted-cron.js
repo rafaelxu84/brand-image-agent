@@ -30,6 +30,22 @@ function findFileForRow(manifest, batch, row, batchIndex) {
   return manifest.files[chunkOffset + customIndex] || null;
 }
 
+function batchNeedsCollection(batch) {
+  if (!batch.completed && !["failed", "expired", "cancelled"].includes(batch.status)) return true;
+  if (batch.errorFileId && !batch.errorDownloadedAt) return true;
+  return false;
+}
+
+function errorMessageFromRow(row) {
+  return (
+    row.error?.message ||
+    row.response?.body?.error?.message ||
+    row.response?.error?.message ||
+    row.message ||
+    "OpenAI batch request failed."
+  );
+}
+
 async function collectBatch({ apiKey, manifest, batch }) {
   const remote = await openaiJson(apiKey, `/batches/${batch.id}`);
   batch.status = remote.status;
@@ -48,43 +64,59 @@ async function collectBatch({ apiKey, manifest, batch }) {
     return false;
   }
 
-  if (!batch.outputFileId || batch.completed) return true;
+  const batchIndex = manifest.batches.findIndex((item) => item.id === batch.id);
 
-  const outputText = await downloadOpenAIFile(apiKey, batch.outputFileId);
-  for (const line of outputText.split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const row = JSON.parse(line);
-    const batchIndex = manifest.batches.findIndex((item) => item.id === batch.id);
-    const file = findFileForRow(manifest, batch, row, batchIndex);
-    if (!file) continue;
+  if (batch.outputFileId && !batch.outputDownloadedAt) {
+    const outputText = await downloadOpenAIFile(apiKey, batch.outputFileId);
+    for (const line of outputText.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const row = JSON.parse(line);
+      const file = findFileForRow(manifest, batch, row, batchIndex);
+      if (!file) continue;
 
-    if (row.error || row.response?.status_code >= 400) {
-      file.status = "failed";
-      file.error = row.error?.message || row.response?.body?.error?.message || "OpenAI batch request failed.";
-      continue;
+      if (row.error || row.response?.status_code >= 400) {
+        file.status = "failed";
+        file.error = errorMessageFromRow(row);
+        continue;
+      }
+
+      const imageCall = row.response?.body?.output?.find((item) => item.type === "image_generation_call");
+      if (!imageCall?.result) {
+        file.status = "failed";
+        file.error = "OpenAI did not return an image result.";
+        continue;
+      }
+
+      const blob = await storeOutputPng({
+        jobId: manifest.id,
+        name: safeName(file.name),
+        base64: imageCall.result
+      });
+      file.status = "completed";
+      file.outputUrl = blob.url;
+      file.error = null;
+      file.completedAt = new Date().toISOString();
     }
+    batch.outputDownloadedAt = new Date().toISOString();
+  }
 
-    const imageCall = row.response?.body?.output?.find((item) => item.type === "image_generation_call");
-    if (!imageCall?.result) {
+  if (batch.errorFileId && !batch.errorDownloadedAt) {
+    const errorText = await downloadOpenAIFile(apiKey, batch.errorFileId);
+    for (const line of errorText.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const row = JSON.parse(line);
+      const file = findFileForRow(manifest, batch, row, batchIndex);
+      if (!file) continue;
       file.status = "failed";
-      file.error = "OpenAI did not return an image result.";
-      continue;
+      file.error = errorMessageFromRow(row);
+      file.failedAt = new Date().toISOString();
     }
-
-    const blob = await storeOutputPng({
-      jobId: manifest.id,
-      name: safeName(file.name),
-      base64: imageCall.result
-    });
-    file.status = "completed";
-    file.outputUrl = blob.url;
-    file.error = null;
-    file.completedAt = new Date().toISOString();
+    batch.errorDownloadedAt = new Date().toISOString();
   }
 
   batch.completed = true;
   batch.status = "completed";
-  batch.completedAt = new Date().toISOString();
+  batch.completedAt ||= new Date().toISOString();
   return true;
 }
 
@@ -97,17 +129,18 @@ export default async function handler(req, res) {
 
     const index = await readIndex();
     const onlyJobId = req.query?.jobId || "";
+    const limit = Math.max(1, Math.min(25, Number(req.query?.limit) || HOSTED_MAX_COLLECT_BATCHES));
     let processed = 0;
     const touched = [];
 
     for (const item of index.jobs || []) {
       if (onlyJobId && item.id !== onlyJobId) continue;
-      if (processed >= HOSTED_MAX_COLLECT_BATCHES) break;
+      if (processed >= limit) break;
       const manifest = await readManifest(item.id);
       if (!manifest) continue;
 
-      const nextBatch = manifest.batches.find((batch) => !batch.completed && !["failed", "expired", "cancelled"].includes(batch.status));
-      if (!nextBatch) {
+      const pendingBatches = manifest.batches.filter(batchNeedsCollection);
+      if (!pendingBatches.length) {
         const summary = summarize(manifest);
         item.status = manifest.status;
         item.completed = summary.completed;
@@ -119,7 +152,11 @@ export default async function handler(req, res) {
         continue;
       }
 
-      await collectBatch({ apiKey, manifest, batch: nextBatch });
+      for (const batch of pendingBatches) {
+        if (processed >= limit) break;
+        await collectBatch({ apiKey, manifest, batch });
+        processed += 1;
+      }
       const summary = summarize(manifest);
       item.status = manifest.status;
       item.completed = summary.completed;
@@ -128,11 +165,10 @@ export default async function handler(req, res) {
       item.updatedAt = new Date().toISOString();
       await writeManifest(manifest);
       touched.push(item.id);
-      processed += 1;
     }
 
     await writeIndex(index);
-    json(res, 200, { ok: true, processed, touched });
+    json(res, 200, { ok: true, processed, limit, touched });
   } catch (error) {
     json(res, 400, { error: error.message || "Hosted cron failed." });
   }

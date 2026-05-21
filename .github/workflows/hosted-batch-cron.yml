@@ -11,4 +11,7 @@ jobs:
     steps:
       - name: Poll hosted batch collector
         run: |
-          curl -fsS "https://brand-image-agent.vercel.app/api/hosted-cron?secret=${{ secrets.HOSTED_CRON_SECRET }}"
+          for i in 1 2 3; do
+            curl -fsS "https://brand-image-agent.vercel.app/api/hosted-cron?limit=8&secret=${{ secrets.HOSTED_CRON_SECRET }}"
+            echo
+          done

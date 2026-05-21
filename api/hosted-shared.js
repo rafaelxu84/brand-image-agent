@@ -4,7 +4,7 @@ import sharp from "sharp";
 export const HOSTED_ACCESS_ENV = "HOSTED_ACCESS_CODE";
 export const HOSTED_CRON_ENV = "HOSTED_CRON_SECRET";
 export const HOSTED_INDEX_PATH = "hosted/jobs/index.json";
-export const HOSTED_MAX_COLLECT_BATCHES = 1;
+export const HOSTED_MAX_COLLECT_BATCHES = 8;
 export const HOSTED_OUTPUT_LIMIT = 400;
 
 export const DESIGN = {
