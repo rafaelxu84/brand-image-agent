@@ -1,6 +1,7 @@
 import {
   HOSTED_MAX_COLLECT_BATCHES,
   checkCronSecret,
+  cleanupExpiredHostedJobs,
   downloadOpenAIFile,
   json,
   openaiJson,
@@ -128,6 +129,7 @@ export default async function handler(req, res) {
     if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
 
     const index = await readIndex();
+    const cleaned = await cleanupExpiredHostedJobs(index);
     const onlyJobId = req.query?.jobId || "";
     const limit = Math.max(1, Math.min(25, Number(req.query?.limit) || HOSTED_MAX_COLLECT_BATCHES));
     let processed = 0;
@@ -135,6 +137,7 @@ export default async function handler(req, res) {
 
     for (const item of index.jobs || []) {
       if (onlyJobId && item.id !== onlyJobId) continue;
+      if (cleaned.removed.some((job) => job.id === item.id)) continue;
       if (processed >= limit) break;
       const manifest = await readManifest(item.id);
       if (!manifest) continue;
@@ -168,7 +171,7 @@ export default async function handler(req, res) {
     }
 
     await writeIndex(index);
-    json(res, 200, { ok: true, processed, limit, touched });
+    json(res, 200, { ok: true, processed, limit, touched, cleaned: cleaned.removed, cleanupFailed: cleaned.failed });
   } catch (error) {
     json(res, 400, { error: error.message || "Hosted cron failed." });
   }

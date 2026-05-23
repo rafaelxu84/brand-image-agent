@@ -1,4 +1,4 @@
-import { list, put } from "@vercel/blob";
+import { del, list, put } from "@vercel/blob";
 import sharp from "sharp";
 
 export const HOSTED_ACCESS_ENV = "HOSTED_ACCESS_CODE";
@@ -6,6 +6,7 @@ export const HOSTED_CRON_ENV = "HOSTED_CRON_SECRET";
 export const HOSTED_INDEX_PATH = "hosted/jobs/index.json";
 export const HOSTED_MAX_COLLECT_BATCHES = 8;
 export const HOSTED_OUTPUT_LIMIT = 400;
+export const HOSTED_CLEANUP_AFTER_DOWNLOAD_DAYS = 5;
 
 export const DESIGN = {
   width: 400,
@@ -140,6 +141,74 @@ export async function readManifest(jobId) {
 export async function writeManifest(manifest) {
   manifest.updatedAt = new Date().toISOString();
   await putJson(manifestPath(manifest.id), manifest);
+}
+
+export function cleanupAfterDate(from = new Date()) {
+  const date = new Date(from);
+  date.setDate(date.getDate() + HOSTED_CLEANUP_AFTER_DOWNLOAD_DAYS);
+  return date.toISOString();
+}
+
+export function isCleanupDue(manifest, now = new Date()) {
+  if (!manifest?.cleanupAfter || manifest.deletedAt) return false;
+  return new Date(manifest.cleanupAfter).getTime() <= now.getTime();
+}
+
+async function listAllPathnames(prefix) {
+  const pathnames = [];
+  let cursor;
+  do {
+    const result = await list({ prefix, limit: 1000, cursor });
+    pathnames.push(...result.blobs.map((blob) => blob.pathname));
+    cursor = result.hasMore ? result.cursor : undefined;
+  } while (cursor);
+  return pathnames;
+}
+
+export async function deleteHostedJobBlobs(jobId) {
+  requireBlobToken();
+  const prefix = `hosted/jobs/${jobId}/`;
+  const pathnames = await listAllPathnames(prefix);
+  const chunkSize = 100;
+  for (let index = 0; index < pathnames.length; index += chunkSize) {
+    await del(pathnames.slice(index, index + chunkSize));
+  }
+  return { deleted: pathnames.length, prefix };
+}
+
+export async function cleanupExpiredHostedJobs(index, now = new Date()) {
+  const removed = [];
+  const failed = [];
+  const kept = [];
+
+  for (const item of index.jobs || []) {
+    const manifest = await readManifest(item.id);
+    if (!manifest) {
+      kept.push(item);
+      continue;
+    }
+    if (!isCleanupDue(manifest, now)) {
+      kept.push(item);
+      continue;
+    }
+
+    try {
+      const cleanup = await deleteHostedJobBlobs(item.id);
+      removed.push({
+        id: item.id,
+        cleanupAfter: manifest.cleanupAfter,
+        deleted: cleanup.deleted
+      });
+    } catch (error) {
+      item.cleanupError = error.message || "Cleanup failed.";
+      item.cleanupCheckedAt = now.toISOString();
+      kept.push(item);
+      failed.push({ id: item.id, error: item.cleanupError });
+    }
+  }
+
+  if (removed.length) index.jobs = kept;
+  return { removed, failed };
 }
 
 export async function openaiJson(apiKey, pathname, { method = "GET", body } = {}) {

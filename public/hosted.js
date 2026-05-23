@@ -179,7 +179,17 @@ async function downloadCompletedZip() {
 
   const zip = createZip(zipFiles);
   downloadBlob(zip, `${manifest.id || "hosted-covers"}-${dateStamp()}.zip`);
-  setStatus(`Packed ${zipFiles.length} completed image(s) into ZIP.`);
+  setStatus(`Packed ${zipFiles.length} completed image(s) into ZIP. Registering cleanup...`);
+  await markDownloaded();
+}
+
+async function markDownloaded() {
+  const data = await postJson("/api/hosted-mark-downloaded", {
+    jobId: state.jobId,
+    accessCode: els.accessCode.value.trim()
+  });
+  renderManifest(data.manifest);
+  setStatus(`ZIP downloaded. This hosted job will be cleaned after ${formatDateTime(data.cleanupAfter)}.`);
 }
 
 async function submitHostedJob() {
@@ -222,8 +232,9 @@ function renderManifest(manifest) {
   state.manifest = manifest;
   const completed = manifest.files.filter((file) => file.status === "completed").length;
   const failed = manifest.files.filter((file) => file.status === "failed").length;
+  const cleanupText = manifest.cleanupAfter ? ` · cleanup after ${formatDateTime(manifest.cleanupAfter)}` : "";
   els.jobTitle.textContent = manifest.id;
-  els.jobMeta.textContent = `${manifest.status} · ${completed}/${manifest.files.length} completed · ${failed} failed`;
+  els.jobMeta.textContent = `${manifest.status} · ${completed}/${manifest.files.length} completed · ${failed} failed${cleanupText}`;
   els.progress.value = manifest.files.length ? Math.round((completed / manifest.files.length) * 100) : 0;
   els.downloadZipBtn.disabled = completed === 0;
   els.retryFailedBtn.disabled = failed === 0;
@@ -252,6 +263,17 @@ function renderManifest(manifest) {
     }
     els.results.append(row);
   }
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleString([], {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 async function refreshStatus() {
