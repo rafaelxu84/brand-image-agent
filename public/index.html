@@ -68,6 +68,11 @@
               <span>Upload logo</span>
               <strong id="logoName">No logo selected</strong>
             </label>
+            <label class="dropzone compact" id="logoBatchDrop">
+              <input id="logoBatchInput" type="file" accept="image/*" multiple />
+              <span>Optional: upload finished covers for logo-only batch</span>
+              <strong id="logoBatchCount">No finished covers selected</strong>
+            </label>
             <label class="field range-field">
               <span>Logo X <strong id="logoXValue">40px</strong></span>
               <input id="logoX" type="range" min="0" max="400" value="40" />
@@ -85,6 +90,7 @@
               <input id="logoOpacity" type="range" min="20" max="100" value="100" />
             </label>
             <button id="downloadLogoZipBtn" type="button" class="ghost" disabled>Download ZIP with logo</button>
+            <button id="downloadUploadedLogoZipBtn" type="button" class="ghost" disabled>Batch logo uploaded covers</button>
           </div>
 
           <div class="actions">
@@ -127,6 +133,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260529-1" type="module"></script>
+    <script src="./app.js?v=20260529-2" type="module"></script>
   </body>
 </html>

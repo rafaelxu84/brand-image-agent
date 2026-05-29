@@ -3,6 +3,7 @@ const state = {
   selectedIndex: 0,
   outputs: [],
   selectedOutput: null,
+  logoBatchFiles: [],
   logo: {
     dataUrl: "",
     image: null,
@@ -21,6 +22,8 @@ const els = {
   apiKey: document.querySelector("#apiKey"),
   logoInput: document.querySelector("#logoInput"),
   logoName: document.querySelector("#logoName"),
+  logoBatchInput: document.querySelector("#logoBatchInput"),
+  logoBatchCount: document.querySelector("#logoBatchCount"),
   logoX: document.querySelector("#logoX"),
   logoY: document.querySelector("#logoY"),
   logoWidth: document.querySelector("#logoWidth"),
@@ -30,6 +33,7 @@ const els = {
   logoWidthValue: document.querySelector("#logoWidthValue"),
   logoOpacityValue: document.querySelector("#logoOpacityValue"),
   downloadLogoZipBtn: document.querySelector("#downloadLogoZipBtn"),
+  downloadUploadedLogoZipBtn: document.querySelector("#downloadUploadedLogoZipBtn"),
   canvasBtn: document.querySelector("#canvasBtn"),
   batchBtn: document.querySelector("#batchBtn"),
   aiBtn: document.querySelector("#aiBtn"),
@@ -50,6 +54,7 @@ const DESIGN_SIZE = { width: 400, height: 533 };
 const DESIGN_FOOTER_HEIGHT = 116;
 const DESIGN_TITLE_MAX_WIDTH = 360;
 const DESIGN_TITLE_CENTER_Y = Math.round(DESIGN_SIZE.height * 0.618);
+const LOGO_ZIP_CHUNK_SIZE = 150;
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
@@ -182,6 +187,7 @@ function updateLogoControlLabels() {
 
 function updateLogoButtons() {
   els.downloadLogoZipBtn.disabled = !state.outputs.length || !state.logo.image;
+  els.downloadUploadedLogoZipBtn.disabled = !state.logoBatchFiles.length || !state.logo.image;
 }
 
 function clamp(value, min, max) {
@@ -414,6 +420,10 @@ function dataUrlToBytes(dataUrl) {
   return { bytes, ext };
 }
 
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
 function createZip(files) {
   const encoder = new TextEncoder();
   const parts = [];
@@ -506,30 +516,75 @@ async function downloadLogoOutputsZip() {
     if (!state.outputs.length) throw new Error("Generate at least one cover first.");
     if (!state.logo.image) throw new Error("Upload a logo first.");
 
+    await downloadLogoItemsAsZip({
+      items: state.outputs,
+      outputUrlForItem: (item) => item.outputUrl,
+      nameForItem: (item, index) => item.name || `cover-${index + 1}`,
+      filenamePrefix: "igaming-covers-logo",
+      statusLabel: "Adding logo"
+    });
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function downloadUploadedLogoBatchZip() {
+  try {
+    if (!state.logoBatchFiles.length) throw new Error("Upload finished covers first.");
+    if (!state.logo.image) throw new Error("Upload a logo first.");
+
+    await downloadLogoItemsAsZip({
+      items: state.logoBatchFiles,
+      outputUrlForItem: (file) => fileToDataUrl(file),
+      nameForItem: (file, index) => file.name || `cover-${index + 1}`,
+      filenamePrefix: "uploaded-covers-logo",
+      statusLabel: "Batch logo"
+    });
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function downloadLogoItemsAsZip({ items, outputUrlForItem, nameForItem, filenamePrefix, statusLabel }) {
+  const totalParts = Math.ceil(items.length / LOGO_ZIP_CHUNK_SIZE);
+  let processed = 0;
+
+  for (let partIndex = 0; partIndex < totalParts; partIndex += 1) {
+    const chunk = items.slice(partIndex * LOGO_ZIP_CHUNK_SIZE, (partIndex + 1) * LOGO_ZIP_CHUNK_SIZE);
     const usedNames = new Map();
     const files = [];
-    for (const [index, item] of state.outputs.entries()) {
-      setStatus(`Adding logo ${index + 1}/${state.outputs.length}...`);
-      const brandedUrl = await composeLogoDataUrl(item.outputUrl);
+
+    for (const [chunkIndex, item] of chunk.entries()) {
+      const globalIndex = partIndex * LOGO_ZIP_CHUNK_SIZE + chunkIndex;
+      processed += 1;
+      setStatus(`${statusLabel} ${processed}/${items.length}${totalParts > 1 ? ` · ZIP ${partIndex + 1}/${totalParts}` : ""}...`);
+      const sourceUrl = await outputUrlForItem(item);
+      const brandedUrl = await composeLogoDataUrl(sourceUrl);
       const { bytes } = dataUrlToBytes(brandedUrl);
-      const baseName = sanitizeFilename(item.name || `cover-${index + 1}`);
+      const baseName = sanitizeFilename(nameForItem(item, globalIndex));
       const count = usedNames.get(baseName) || 0;
       usedNames.set(baseName, count + 1);
       const suffix = count ? `-${count + 1}` : "";
       files.push({
-        name: `${String(index + 1).padStart(2, "0")}-${baseName}${suffix}-logo.png`,
+        name: `${String(globalIndex + 1).padStart(3, "0")}-${baseName}${suffix}-logo.png`,
         bytes
       });
+      if (processed % 12 === 0) await nextFrame();
     }
 
     const blob = createZip(files);
     const url = URL.createObjectURL(blob);
-    downloadImage(url, `igaming-covers-logo-${dateStamp()}.zip`);
+    const partSuffix = totalParts > 1 ? `-part-${String(partIndex + 1).padStart(2, "0")}` : "";
+    downloadImage(url, `${filenamePrefix}-${dateStamp()}${partSuffix}.zip`);
     setTimeout(() => URL.revokeObjectURL(url), 30000);
-    setStatus(`Packed ${files.length} cover(s) with logo into ZIP.`);
-  } catch (error) {
-    setStatus(error.message, true);
+    await nextFrame();
   }
+
+  setStatus(
+    totalParts > 1
+      ? `Packed ${items.length} cover(s) with logo into ${totalParts} ZIP files.`
+      : `Packed ${items.length} cover(s) with logo into ZIP.`
+  );
 }
 
 async function generateBatch() {
@@ -699,6 +754,14 @@ els.logoInput.addEventListener("change", async (event) => {
   }
 });
 
+els.logoBatchInput.addEventListener("change", (event) => {
+  state.logoBatchFiles = Array.from(event.target.files || []);
+  els.logoBatchCount.textContent = state.logoBatchFiles.length
+    ? `${state.logoBatchFiles.length} finished cover(s) selected`
+    : "No finished covers selected";
+  updateLogoButtons();
+});
+
 for (const input of [els.logoX, els.logoY, els.logoWidth, els.logoOpacity]) {
   input.addEventListener("input", () => {
     updateLogoControlLabels();
@@ -735,3 +798,4 @@ els.aiBtn.addEventListener("click", generateAiSelected);
 els.aiBatchBtn.addEventListener("click", generateAiBatch);
 els.downloadAllBtn.addEventListener("click", downloadOutputsZip);
 els.downloadLogoZipBtn.addEventListener("click", downloadLogoOutputsZip);
+els.downloadUploadedLogoZipBtn.addEventListener("click", downloadUploadedLogoBatchZip);
