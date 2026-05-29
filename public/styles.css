@@ -325,10 +325,27 @@ input[type="range"] {
 
 .image-frame.portrait {
   aspect-ratio: 400 / 533;
+  position: relative;
 }
 
 #sourcePreview:not([src]) {
   display: none;
+}
+
+.logo-overlay {
+  position: absolute;
+  z-index: 3;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  pointer-events: auto;
+  user-select: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.logo-overlay:active {
+  cursor: grabbing;
 }
 
 .results {

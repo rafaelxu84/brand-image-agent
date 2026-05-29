@@ -45,6 +45,7 @@ const els = {
   sourcePreview: document.querySelector("#sourcePreview"),
   previewCanvas: document.querySelector("#previewCanvas"),
   aiPreview: document.querySelector("#aiPreview"),
+  logoOverlay: document.querySelector("#logoOverlay"),
   results: document.querySelector("#results")
 };
 
@@ -190,13 +191,33 @@ function updateLogoButtons() {
   els.downloadUploadedLogoZipBtn.disabled = !state.logoBatchFiles.length || !state.logo.image;
 }
 
+function hasLogoPreviewBase() {
+  return Boolean(state.selectedOutput || state.files[state.selectedIndex] || state.logoBatchFiles[0]);
+}
+
+function updateLogoOverlay() {
+  if (!state.logo.image || !hasLogoPreviewBase()) {
+    els.logoOverlay.hidden = true;
+    els.logoOverlay.removeAttribute("src");
+    return;
+  }
+
+  const settings = logoSettings();
+  els.logoOverlay.src = state.logo.dataUrl;
+  els.logoOverlay.hidden = false;
+  els.logoOverlay.style.left = `${(settings.x / DESIGN_SIZE.width) * 100}%`;
+  els.logoOverlay.style.top = `${(settings.y / DESIGN_SIZE.height) * 100}%`;
+  els.logoOverlay.style.width = `${(settings.width / DESIGN_SIZE.width) * 100}%`;
+  els.logoOverlay.style.opacity = String(settings.opacity);
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
 function moveLogoFromPointer(event) {
-  if (!state.logo.image || els.aiPreview.hidden) return;
-  const rect = els.aiPreview.getBoundingClientRect();
+  if (!state.logo.image || els.logoOverlay.hidden) return;
+  const rect = els.logoOverlay.parentElement.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
 
   const settings = logoSettings();
@@ -207,6 +228,7 @@ function moveLogoFromPointer(event) {
   els.logoX.value = Math.round(clamp(x, 0, DESIGN_SIZE.width - settings.width));
   els.logoY.value = Math.round(clamp(y, 0, DESIGN_SIZE.height - logoHeight));
   updateLogoControlLabels();
+  updateLogoOverlay();
   refreshBrandedPreview().catch(() => {});
 }
 
@@ -237,11 +259,8 @@ async function composeLogoDataUrl(outputUrl) {
 
 async function refreshBrandedPreview() {
   if (!state.selectedOutput) return;
-  if (!state.logo.image) {
-    els.aiPreview.src = state.selectedOutput.outputUrl;
-    return;
-  }
-  els.aiPreview.src = await composeLogoDataUrl(state.selectedOutput.outputUrl);
+  els.aiPreview.src = state.selectedOutput.outputUrl;
+  updateLogoOverlay();
 }
 
 async function previewLogoBatchFile(file = state.logoBatchFiles[0]) {
@@ -341,10 +360,12 @@ function selectImage(index) {
   const file = state.files[index];
   els.aiPreview.hidden = true;
   els.previewCanvas.hidden = false;
+  updateLogoOverlay();
   if (!file) {
     els.selectedTitle.textContent = "No image selected";
     els.selectedMeta.textContent = "Upload assets to begin.";
     els.sourcePreview.removeAttribute("src");
+    updateLogoOverlay();
     return;
   }
   els.selectedTitle.textContent = file.name;
@@ -367,8 +388,10 @@ function showOutput(item) {
   els.aiPreview.src = item.outputUrl;
   els.aiPreview.hidden = false;
   els.previewCanvas.hidden = true;
+  updateLogoOverlay();
   refreshBrandedPreview().catch(() => {
     els.aiPreview.src = item.outputUrl;
+    updateLogoOverlay();
   });
 }
 
@@ -789,6 +812,7 @@ els.logoInput.addEventListener("change", async (event) => {
     updateLogoButtons();
     const hasPreviewTarget = await ensureLogoPreviewTarget();
     await refreshBrandedPreview();
+    updateLogoOverlay();
     setStatus(
       hasPreviewTarget
         ? "Transparent logo is composited on the preview. Adjust position and size, then start batch export."
@@ -805,6 +829,7 @@ els.logoBatchInput.addEventListener("change", async (event) => {
     ? `${state.logoBatchFiles.length} finished cover(s) selected`
     : "No finished covers selected";
   updateLogoButtons();
+  updateLogoOverlay();
   try {
     if (state.logoBatchFiles[0]) {
       await previewLogoBatchFile(state.logoBatchFiles[0]);
@@ -822,25 +847,26 @@ els.logoBatchInput.addEventListener("change", async (event) => {
 for (const input of [els.logoX, els.logoY, els.logoWidth, els.logoOpacity]) {
   input.addEventListener("input", () => {
     updateLogoControlLabels();
+    updateLogoOverlay();
     refreshBrandedPreview().catch(() => {});
   });
 }
 
 let isDraggingLogo = false;
-els.aiPreview.addEventListener("pointerdown", (event) => {
-  if (!state.logo.image || els.aiPreview.hidden) return;
+els.logoOverlay.addEventListener("pointerdown", (event) => {
+  if (!state.logo.image || els.logoOverlay.hidden) return;
   isDraggingLogo = true;
-  els.aiPreview.setPointerCapture?.(event.pointerId);
+  els.logoOverlay.setPointerCapture?.(event.pointerId);
   moveLogoFromPointer(event);
 });
-els.aiPreview.addEventListener("pointermove", (event) => {
+els.logoOverlay.addEventListener("pointermove", (event) => {
   if (!isDraggingLogo) return;
   moveLogoFromPointer(event);
 });
-els.aiPreview.addEventListener("pointerup", () => {
+els.logoOverlay.addEventListener("pointerup", () => {
   isDraggingLogo = false;
 });
-els.aiPreview.addEventListener("pointercancel", () => {
+els.logoOverlay.addEventListener("pointercancel", () => {
   isDraggingLogo = false;
 });
 
