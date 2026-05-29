@@ -170,6 +170,10 @@ textarea {
   align-content: center;
 }
 
+.dropzone.compact {
+  min-height: 74px;
+}
+
 .dropzone input {
   display: none;
 }
@@ -189,6 +193,35 @@ textarea {
   grid-template-columns: 1fr;
   gap: 10px;
   padding-top: 4px;
+}
+
+.logo-tools {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #121811;
+}
+
+.logo-tools .label {
+  margin: 0;
+}
+
+.range-field span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.range-field strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+input[type="range"] {
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 .status {
@@ -251,6 +284,15 @@ textarea {
   max-width: 100%;
   max-height: 68vh;
   display: block;
+}
+
+#aiPreview {
+  cursor: grab;
+  touch-action: none;
+}
+
+#aiPreview:active {
+  cursor: grabbing;
 }
 
 .image-frame.portrait {

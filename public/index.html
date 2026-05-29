@@ -57,6 +57,32 @@
             <input id="apiKey" type="password" placeholder="Server key is configured" autocomplete="off" />
           </label>
 
+          <div class="logo-tools" aria-label="Logo placement">
+            <p class="label">Logo overlay</p>
+            <label class="dropzone compact" id="logoDrop">
+              <input id="logoInput" type="file" accept="image/*" />
+              <span>Upload logo</span>
+              <strong id="logoName">No logo selected</strong>
+            </label>
+            <label class="field range-field">
+              <span>Logo X <strong id="logoXValue">40px</strong></span>
+              <input id="logoX" type="range" min="0" max="400" value="40" />
+            </label>
+            <label class="field range-field">
+              <span>Logo Y <strong id="logoYValue">430px</strong></span>
+              <input id="logoY" type="range" min="0" max="533" value="430" />
+            </label>
+            <label class="field range-field">
+              <span>Logo width <strong id="logoWidthValue">160px</strong></span>
+              <input id="logoWidth" type="range" min="40" max="300" value="160" />
+            </label>
+            <label class="field range-field">
+              <span>Opacity <strong id="logoOpacityValue">100%</strong></span>
+              <input id="logoOpacity" type="range" min="20" max="100" value="100" />
+            </label>
+            <button id="downloadLogoZipBtn" type="button" class="ghost" disabled>Download ZIP with logo</button>
+          </div>
+
           <div class="actions">
             <button id="canvasBtn" type="button">Expand selected</button>
             <button id="batchBtn" type="button" class="secondary">Expand all</button>
@@ -97,6 +123,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260521-1" type="module"></script>
+    <script src="./app.js?v=20260529-1" type="module"></script>
   </body>
 </html>

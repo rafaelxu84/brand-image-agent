@@ -1,7 +1,13 @@
 const state = {
   files: [],
   selectedIndex: 0,
-  outputs: []
+  outputs: [],
+  selectedOutput: null,
+  logo: {
+    dataUrl: "",
+    image: null,
+    name: ""
+  }
 };
 
 const els = {
@@ -13,6 +19,17 @@ const els = {
   aiQuality: document.querySelector("#aiQuality"),
   instructions: document.querySelector("#instructions"),
   apiKey: document.querySelector("#apiKey"),
+  logoInput: document.querySelector("#logoInput"),
+  logoName: document.querySelector("#logoName"),
+  logoX: document.querySelector("#logoX"),
+  logoY: document.querySelector("#logoY"),
+  logoWidth: document.querySelector("#logoWidth"),
+  logoOpacity: document.querySelector("#logoOpacity"),
+  logoXValue: document.querySelector("#logoXValue"),
+  logoYValue: document.querySelector("#logoYValue"),
+  logoWidthValue: document.querySelector("#logoWidthValue"),
+  logoOpacityValue: document.querySelector("#logoOpacityValue"),
+  downloadLogoZipBtn: document.querySelector("#downloadLogoZipBtn"),
   canvasBtn: document.querySelector("#canvasBtn"),
   batchBtn: document.querySelector("#batchBtn"),
   aiBtn: document.querySelector("#aiBtn"),
@@ -146,6 +163,81 @@ function getOutputSize() {
   return { ...DESIGN_SIZE };
 }
 
+function logoSettings() {
+  return {
+    x: Number(els.logoX.value || 0),
+    y: Number(els.logoY.value || 0),
+    width: Number(els.logoWidth.value || 160),
+    opacity: Number(els.logoOpacity.value || 100) / 100
+  };
+}
+
+function updateLogoControlLabels() {
+  const settings = logoSettings();
+  els.logoXValue.textContent = `${Math.round(settings.x)}px`;
+  els.logoYValue.textContent = `${Math.round(settings.y)}px`;
+  els.logoWidthValue.textContent = `${Math.round(settings.width)}px`;
+  els.logoOpacityValue.textContent = `${Math.round(settings.opacity * 100)}%`;
+}
+
+function updateLogoButtons() {
+  els.downloadLogoZipBtn.disabled = !state.outputs.length || !state.logo.image;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function moveLogoFromPointer(event) {
+  if (!state.logo.image || els.aiPreview.hidden) return;
+  const rect = els.aiPreview.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const settings = logoSettings();
+  const logoHeight = settings.width * (state.logo.image.naturalHeight / state.logo.image.naturalWidth);
+  const x = ((event.clientX - rect.left) / rect.width) * DESIGN_SIZE.width - settings.width / 2;
+  const y = ((event.clientY - rect.top) / rect.height) * DESIGN_SIZE.height - logoHeight / 2;
+
+  els.logoX.value = Math.round(clamp(x, 0, DESIGN_SIZE.width - settings.width));
+  els.logoY.value = Math.round(clamp(y, 0, DESIGN_SIZE.height - logoHeight));
+  updateLogoControlLabels();
+  refreshBrandedPreview().catch(() => {});
+}
+
+async function composeLogoDataUrl(outputUrl) {
+  if (!state.logo.image) return outputUrl;
+  const base = await loadImage(outputUrl);
+  const settings = logoSettings();
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = DESIGN_SIZE.width;
+  canvas.height = DESIGN_SIZE.height;
+
+  ctx.drawImage(base, 0, 0, DESIGN_SIZE.width, DESIGN_SIZE.height);
+
+  const logo = state.logo.image;
+  const width = Math.min(settings.width, DESIGN_SIZE.width);
+  const height = width * (logo.naturalHeight / logo.naturalWidth);
+  const x = Math.max(-width, Math.min(DESIGN_SIZE.width, settings.x));
+  const y = Math.max(-height, Math.min(DESIGN_SIZE.height, settings.y));
+
+  ctx.save();
+  ctx.globalAlpha = settings.opacity;
+  ctx.drawImage(logo, x, y, width, height);
+  ctx.restore();
+
+  return canvas.toDataURL("image/png", 0.96);
+}
+
+async function refreshBrandedPreview() {
+  if (!state.selectedOutput) return;
+  if (!state.logo.image) {
+    els.aiPreview.src = state.selectedOutput.outputUrl;
+    return;
+  }
+  els.aiPreview.src = await composeLogoDataUrl(state.selectedOutput.outputUrl);
+}
+
 async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   const sourceUrl = await fileToDataUrl(file);
   const sourceImg = await loadImage(sourceUrl);
@@ -203,6 +295,7 @@ async function generateCanvasOutput(file, previewOnly = false, options = {}) {
 
 function selectImage(index) {
   state.selectedIndex = index;
+  state.selectedOutput = null;
   const file = state.files[index];
   els.aiPreview.hidden = true;
   els.previewCanvas.hidden = false;
@@ -221,17 +314,22 @@ function selectImage(index) {
 }
 
 function showOutput(item) {
+  state.selectedOutput = item;
   els.selectedTitle.textContent = item.name;
   els.selectedMeta.textContent = `${item.width} x ${item.height}`;
   els.sourcePreview.src = item.sourceUrl;
   els.aiPreview.src = item.outputUrl;
   els.aiPreview.hidden = false;
   els.previewCanvas.hidden = true;
+  refreshBrandedPreview().catch(() => {
+    els.aiPreview.src = item.outputUrl;
+  });
 }
 
 function renderResults() {
   els.results.innerHTML = "";
   els.downloadAllBtn.disabled = state.outputs.length === 0;
+  updateLogoButtons();
 
   state.outputs.forEach((item, index) => {
     const card = document.createElement("article");
@@ -403,6 +501,37 @@ function downloadOutputsZip() {
   }
 }
 
+async function downloadLogoOutputsZip() {
+  try {
+    if (!state.outputs.length) throw new Error("Generate at least one cover first.");
+    if (!state.logo.image) throw new Error("Upload a logo first.");
+
+    const usedNames = new Map();
+    const files = [];
+    for (const [index, item] of state.outputs.entries()) {
+      setStatus(`Adding logo ${index + 1}/${state.outputs.length}...`);
+      const brandedUrl = await composeLogoDataUrl(item.outputUrl);
+      const { bytes } = dataUrlToBytes(brandedUrl);
+      const baseName = sanitizeFilename(item.name || `cover-${index + 1}`);
+      const count = usedNames.get(baseName) || 0;
+      usedNames.set(baseName, count + 1);
+      const suffix = count ? `-${count + 1}` : "";
+      files.push({
+        name: `${String(index + 1).padStart(2, "0")}-${baseName}${suffix}-logo.png`,
+        bytes
+      });
+    }
+
+    const blob = createZip(files);
+    const url = URL.createObjectURL(blob);
+    downloadImage(url, `igaming-covers-logo-${dateStamp()}.zip`);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    setStatus(`Packed ${files.length} cover(s) with logo into ZIP.`);
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
 async function generateBatch() {
   try {
     if (!state.files.length) throw new Error("Upload at least one source image.");
@@ -548,17 +677,61 @@ async function generateAiBatch() {
 els.imageInput.addEventListener("change", (event) => {
   state.files = Array.from(event.target.files || []);
   state.outputs = [];
+  state.selectedOutput = null;
   els.imageCount.textContent = state.files.length ? `${state.files.length} image(s) selected` : "No images selected";
   renderResults();
   selectImage(0);
+});
+
+els.logoInput.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    const image = await loadImage(dataUrl);
+    state.logo = { dataUrl, image, name: file.name };
+    els.logoName.textContent = file.name;
+    updateLogoButtons();
+    await refreshBrandedPreview();
+    setStatus("Logo loaded. Adjust position, then download ZIP with logo.");
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+});
+
+for (const input of [els.logoX, els.logoY, els.logoWidth, els.logoOpacity]) {
+  input.addEventListener("input", () => {
+    updateLogoControlLabels();
+    refreshBrandedPreview().catch(() => {});
+  });
+}
+
+let isDraggingLogo = false;
+els.aiPreview.addEventListener("pointerdown", (event) => {
+  if (!state.logo.image || els.aiPreview.hidden) return;
+  isDraggingLogo = true;
+  els.aiPreview.setPointerCapture?.(event.pointerId);
+  moveLogoFromPointer(event);
+});
+els.aiPreview.addEventListener("pointermove", (event) => {
+  if (!isDraggingLogo) return;
+  moveLogoFromPointer(event);
+});
+els.aiPreview.addEventListener("pointerup", () => {
+  isDraggingLogo = false;
+});
+els.aiPreview.addEventListener("pointercancel", () => {
+  isDraggingLogo = false;
 });
 
 for (const input of [els.exportWidth, els.footerRatio]) {
   input.addEventListener("input", () => selectImage(state.selectedIndex));
 }
 
+updateLogoControlLabels();
 els.canvasBtn.addEventListener("click", expandSelected);
 els.batchBtn.addEventListener("click", generateBatch);
 els.aiBtn.addEventListener("click", generateAiSelected);
 els.aiBatchBtn.addEventListener("click", generateAiBatch);
 els.downloadAllBtn.addEventListener("click", downloadOutputsZip);
+els.downloadLogoZipBtn.addEventListener("click", downloadLogoOutputsZip);
