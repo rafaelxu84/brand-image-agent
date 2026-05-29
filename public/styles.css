@@ -247,6 +247,23 @@ textarea {
   font-size: 12px;
 }
 
+.check-field {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.check-field input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 input[type="range"] {
   padding: 0;
   accent-color: var(--accent);

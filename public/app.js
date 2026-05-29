@@ -22,6 +22,7 @@ const els = {
   apiKey: document.querySelector("#apiKey"),
   logoInput: document.querySelector("#logoInput"),
   logoName: document.querySelector("#logoName"),
+  removeLogoWhite: document.querySelector("#removeLogoWhite"),
   logoBatchInput: document.querySelector("#logoBatchInput"),
   logoBatchCount: document.querySelector("#logoBatchCount"),
   logoX: document.querySelector("#logoX"),
@@ -191,6 +192,10 @@ function updateLogoButtons() {
   els.downloadUploadedLogoZipBtn.disabled = !state.logoBatchFiles.length || !state.logo.image;
 }
 
+function logoDisplayUrl() {
+  return state.logo.processedDataUrl || state.logo.dataUrl;
+}
+
 function hasLogoPreviewBase() {
   return Boolean(state.selectedOutput || state.files[state.selectedIndex] || state.logoBatchFiles[0]);
 }
@@ -203,7 +208,7 @@ function updateLogoOverlay() {
   }
 
   const settings = logoSettings();
-  els.logoOverlay.src = state.logo.dataUrl;
+  els.logoOverlay.src = logoDisplayUrl();
   els.logoOverlay.hidden = false;
   els.logoOverlay.style.left = `${(settings.x / DESIGN_SIZE.width) * 100}%`;
   els.logoOverlay.style.top = `${(settings.y / DESIGN_SIZE.height) * 100}%`;
@@ -243,7 +248,7 @@ async function composeLogoDataUrl(outputUrl) {
 
   ctx.drawImage(base, 0, 0, DESIGN_SIZE.width, DESIGN_SIZE.height);
 
-  const logo = state.logo.image;
+  const logo = state.logo.processedImage || state.logo.image;
   const width = Math.min(settings.width, DESIGN_SIZE.width);
   const height = width * (logo.naturalHeight / logo.naturalWidth);
   const x = Math.max(-width, Math.min(DESIGN_SIZE.width, settings.x));
@@ -255,6 +260,52 @@ async function composeLogoDataUrl(outputUrl) {
   ctx.restore();
 
   return canvas.toDataURL("image/png", 0.96);
+}
+
+async function removeWhiteLogoBackground(dataUrl) {
+  const img = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  ctx.drawImage(img, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let index = 0; index < data.length; index += 4) {
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const a = data[index + 3];
+    if (a === 0) continue;
+
+    const whiteness = Math.min(r, g, b);
+    const colorSpread = Math.max(r, g, b) - whiteness;
+    if (whiteness > 235 && colorSpread < 24) {
+      const alpha = Math.max(0, Math.min(a, (255 - whiteness) * 8));
+      data[index + 3] = alpha;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+async function updateLogoWhiteRemoval() {
+  if (!state.logo.dataUrl) return;
+  if (!els.removeLogoWhite.checked) {
+    state.logo.processedDataUrl = "";
+    state.logo.processedImage = null;
+    updateLogoOverlay();
+    await refreshBrandedPreview();
+    return;
+  }
+
+  const processedDataUrl = await removeWhiteLogoBackground(state.logo.dataUrl);
+  state.logo.processedDataUrl = processedDataUrl;
+  state.logo.processedImage = await loadImage(processedDataUrl);
+  updateLogoOverlay();
+  await refreshBrandedPreview();
 }
 
 async function refreshBrandedPreview() {
@@ -807,9 +858,10 @@ els.logoInput.addEventListener("change", async (event) => {
   try {
     const dataUrl = await fileToDataUrl(file);
     const image = await loadImage(dataUrl);
-    state.logo = { dataUrl, image, name: file.name };
+    state.logo = { dataUrl, image, name: file.name, processedDataUrl: "", processedImage: null };
     els.logoName.textContent = file.name;
     updateLogoButtons();
+    await updateLogoWhiteRemoval();
     const hasPreviewTarget = await ensureLogoPreviewTarget();
     await refreshBrandedPreview();
     updateLogoOverlay();
@@ -821,6 +873,18 @@ els.logoInput.addEventListener("change", async (event) => {
   } catch (error) {
     setStatus(error.message, true);
   }
+});
+
+els.removeLogoWhite.addEventListener("change", () => {
+  updateLogoWhiteRemoval()
+    .then(() => {
+      setStatus(
+        els.removeLogoWhite.checked
+          ? "White logo background removal is on. Check the preview, then adjust position and export."
+          : "Using the original logo alpha channel."
+      );
+    })
+    .catch((error) => setStatus(error.message, true));
 });
 
 els.logoBatchInput.addEventListener("change", async (event) => {
