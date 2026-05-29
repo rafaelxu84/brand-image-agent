@@ -58,7 +58,7 @@ const DESIGN_SIZE = { width: 400, height: 533 };
 const DESIGN_FOOTER_HEIGHT = 116;
 const DESIGN_TITLE_MAX_WIDTH = 360;
 const DESIGN_TITLE_CENTER_Y = Math.round(DESIGN_SIZE.height * 0.618);
-const LOGO_ZIP_CHUNK_SIZE = 150;
+const LOGO_ZIP_CHUNK_SIZE = 1000;
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
