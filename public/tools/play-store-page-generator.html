@@ -1,0 +1,2790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Play Store Page Generator</title>
+<style>
+  :root{
+    --bg:#f1f3f4;
+    --panel:#ffffff;
+    --border:#dadce0;
+    --text:#202124;
+    --muted:#5f6368;
+    --primary:#01875f;
+    --primary-dark:#016b4d;
+    --accent:#1a73e8;
+    --shadow:0 1px 2px rgba(60,64,67,.1), 0 2px 6px rgba(60,64,67,.08);
+    --radius:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;font-family:"Google Sans","Roboto","PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--text);background:var(--bg)}
+  button{font-family:inherit}
+
+  /* Top bar */
+  .topbar{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 16px;background:#fff;border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:10;
+  }
+  .topbar h1{font-size:16px;margin:0;flex:1;font-weight:600}
+  .topbar .badge{font-size:12px;color:var(--muted);background:#f1f3f4;padding:3px 8px;border-radius:10px}
+  .btn{
+    border:1px solid var(--border);background:#fff;color:var(--text);
+    padding:7px 14px;border-radius:18px;cursor:pointer;font-size:13px;font-weight:500;
+    transition:background .15s;white-space:nowrap;
+  }
+  .btn:hover{background:#f8f9fa}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .btn-primary:hover{background:var(--primary-dark)}
+  .btn-accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn-accent:hover{filter:brightness(.92)}
+  .btn-ghost{border:none;background:transparent;color:var(--accent)}
+  .btn-danger{color:#d93025}
+  .btn-sm{padding:4px 10px;font-size:12px;border-radius:14px}
+
+  /* Pages list (CMS dashboard) */
+  .pages-wrap{padding:24px;height:calc(100vh - 53px);overflow:auto;background:var(--bg)}
+  .pages-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;max-width:1200px;margin:0 auto}
+  .page-card{
+    background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;
+    transition:border-color .15s, box-shadow .15s;cursor:pointer;
+    display:flex;flex-direction:column;gap:10px;min-height:160px;
+  }
+  .page-card:hover{border-color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  .page-card-head{display:flex;align-items:flex-start;gap:10px}
+  .page-card-icon{
+    width:42px;height:42px;border-radius:8px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;font-size:20px;
+    background:#f1f3f4;
+  }
+  .page-card-title{font-size:14px;font-weight:600;line-height:1.4;margin:0 0 2px;word-break:break-word}
+  .page-card-meta{font-size:11px;color:var(--muted)}
+  .page-card-id{
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    font-size:11px;color:var(--muted);background:#f8f9fa;
+    padding:3px 6px;border-radius:4px;align-self:flex-start;margin-top:auto;
+  }
+  .page-card-actions{display:flex;gap:6px;margin-top:6px;padding-top:10px;border-top:1px solid #f1f3f4}
+  .page-card-actions .btn-sm{padding:4px 10px;font-size:11px}
+  .pages-empty{
+    text-align:center;padding:80px 20px;color:var(--muted);
+    background:#fff;border:1px dashed var(--border);border-radius:12px;
+    max-width:600px;margin:40px auto;
+  }
+  .pages-empty h2{font-size:18px;font-weight:500;margin:0 0 8px;color:var(--text)}
+  .pages-toolbar{
+    max-width:1200px;margin:0 auto 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  }
+  .pages-search{
+    flex:1;min-width:200px;max-width:360px;
+    padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;
+  }
+  .pages-search:focus{outline:none;border-color:var(--primary)}
+
+  .page-name-input{
+    border:1px solid transparent;background:transparent;
+    padding:4px 8px;border-radius:6px;font-size:14px;font-weight:600;font-family:inherit;
+    min-width:200px;flex:1;color:var(--text);
+  }
+  .page-name-input:hover{border-color:var(--border);background:#fff}
+  .page-name-input:focus{outline:none;border-color:var(--primary);background:#fff}
+
+  /* Layout */
+  .app{display:grid;grid-template-columns:minmax(420px,500px) 1fr;height:calc(100vh - 53px)}
+  .editor{
+    overflow:auto;background:#fff;border-right:1px solid var(--border);
+    padding:8px 0 80px;
+  }
+  .preview-wrap{
+    overflow:auto;display:flex;justify-content:center;align-items:flex-start;
+    padding:24px;background:var(--bg);
+  }
+  .preview{
+    width:100%;max-width:760px;background:#fff;border-radius:12px;
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+
+  /* Editor sections */
+  details.section{border-bottom:1px solid #eee}
+  details.section > summary{
+    list-style:none;cursor:pointer;padding:14px 18px;
+    font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px;
+    user-select:none;
+  }
+  details.section > summary::-webkit-details-marker{display:none}
+  details.section > summary::before{
+    content:"›";display:inline-block;transition:transform .2s;color:var(--muted);font-size:18px;line-height:1;
+  }
+  details[open].section > summary::before{transform:rotate(90deg)}
+  details.section > summary:hover{background:#fafafa}
+  details.section.ai > summary{background:#f0f7ff}
+  details.section.ai > summary:hover{background:#e6f1ff}
+  .section-body{padding:4px 18px 18px}
+  .field{display:block;margin:10px 0}
+  .field > label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:500}
+  .field input[type=text],.field input[type=password],.field input[type=number],.field input[type=url],.field textarea,.field select{
+    width:100%;border:1px solid var(--border);border-radius:6px;padding:8px 10px;
+    font-size:13px;font-family:inherit;background:#fff;color:var(--text);
+  }
+  .field textarea{resize:vertical;min-height:70px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+  .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--primary)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .check{display:flex;align-items:center;gap:8px;font-size:13px;margin:8px 0;cursor:pointer}
+  .check input{margin:0}
+  .helper{font-size:12px;color:var(--muted);margin:4px 0 0}
+
+  .item-card{
+    border:1px solid #eee;border-radius:8px;padding:10px;margin:8px 0;background:#fafafa;
+  }
+  .item-card .item-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .item-card .item-head .ttl{font-size:12px;font-weight:600;color:var(--muted)}
+  .img-input{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .img-thumb{width:42px;height:42px;border-radius:6px;background:#eee;object-fit:cover;border:1px solid var(--border)}
+  .img-thumb.lg{width:64px;height:64px;border-radius:14px}
+
+  .ai-status{
+    margin-top:10px;padding:10px;border-radius:8px;font-size:12px;
+    background:#f8f9fa;color:var(--muted);max-height:160px;overflow:auto;
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;line-height:1.5;
+    white-space:pre-wrap;display:none;
+  }
+  .ai-status.ok{background:#e6f4ea;color:#1e8e3e;display:block}
+  .ai-status.err{background:#fce8e6;color:#c5221f;display:block}
+  .ai-status.busy{background:#e8f0fe;color:#1a73e8;display:block}
+
+  /* ============ PLAY STORE PREVIEW ============ */
+  .ps{font-size:14px;color:var(--text);line-height:1.5;position:relative}
+
+  /* Fake Play Store top navigation bar */
+  .ps-topnav{
+    position:sticky;top:0;left:0;right:0;z-index:50;
+    background:#fff;height:56px;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 16px;
+    border-bottom:1px solid #dadce0;
+  }
+  .ps-topnav-left{display:flex;align-items:center;gap:24px;flex:1;min-width:0}
+  .ps-topnav-brand{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .ps-topnav-logo{width:28px;height:28px;flex-shrink:0}
+  .ps-topnav-brand-text{font-size:18px;font-weight:500;color:#5f6368;letter-spacing:.2px}
+  .ps-topnav-menu{display:flex;align-items:center;gap:24px;font-size:14px;color:#5f6368;font-weight:500;overflow:hidden}
+  .ps-topnav-menu span{cursor:pointer;white-space:nowrap;padding:6px 0;position:relative}
+  .ps-topnav-menu span.active{color:var(--primary)}
+  .ps-topnav-menu span.active::after{
+    content:"";position:absolute;left:0;right:0;bottom:-18px;height:2px;background:var(--primary);
+  }
+  .ps-topnav-right{display:flex;align-items:center;gap:18px;color:#5f6368;font-size:18px;flex-shrink:0}
+  .ps-topnav-right .ps-topnav-icon{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%}
+  .ps-topnav-right .ps-topnav-icon:hover{background:#f1f3f4}
+
+  /* Fake Play Store bottom navigation bar */
+  .ps-bottomnav{
+    position:sticky;bottom:0;left:0;right:0;z-index:50;
+    background:#fff;height:56px;
+    display:flex;align-items:stretch;
+    border-top:1px solid #dadce0;
+  }
+  .ps-bottomnav-item{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    font-size:11px;color:#5f6368;cursor:pointer;
+  }
+  .ps-bottomnav-item.active{color:var(--primary)}
+  .ps-bottomnav-item .ps-bottomnav-icon{font-size:20px;line-height:1}
+
+  /* Hide menu items on narrow screens (matches real Play Store) */
+  @media (max-width: 600px){
+    .ps-topnav-menu{display:none}
+  }
+
+  .ps-header{padding:24px 24px 0}
+  .ps-app-row{display:flex;gap:20px;align-items:flex-start}
+  .ps-icon{
+    width:96px;height:96px;border-radius:22px;
+    background:linear-gradient(135deg,#34d399,#059669);
+    flex-shrink:0;object-fit:cover;
+    box-shadow:0 1px 3px rgba(0,0,0,.1);
+  }
+  .ps-app-info{flex:1;min-width:0}
+  .ps-app-name{font-size:24px;font-weight:600;line-height:1.2;margin:0 0 4px}
+  .ps-developer{color:var(--primary);font-size:13px;font-weight:500;margin:0 0 4px}
+  .ps-meta{font-size:12px;color:var(--muted)}
+  .ps-meta span+span::before{content:" · ";margin:0 2px}
+  .ps-stats{
+    display:grid;grid-template-columns:repeat(4,1fr);
+    margin:24px 24px 0;padding:16px 0;border-top:1px solid #eee;border-bottom:1px solid #eee;
+    text-align:center;
+  }
+  .ps-stat{display:flex;flex-direction:column;align-items:center;gap:4px;border-right:1px solid #eee}
+  .ps-stat:last-child{border-right:none}
+  .ps-stat-val{font-size:14px;font-weight:600;display:flex;align-items:center;gap:3px}
+  .ps-stat-sub{font-size:11px;color:var(--muted)}
+
+  .ps-actions{display:flex;gap:12px;align-items:center;padding:18px 24px;flex-wrap:wrap}
+  .ps-install{
+    flex:1;min-width:160px;background:var(--primary);color:#fff;border:none;
+    padding:10px 22px;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;
+    text-decoration:none;text-align:center;display:inline-block;
+  }
+  .ps-install:hover{background:var(--primary-dark)}
+  .ps-iconbtn{
+    background:none;border:1px solid var(--border);color:var(--muted);
+    width:40px;height:40px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  }
+
+  /* Top-of-page video hero — inline autoplay (no click) */
+  .ps-hero{
+    position:relative;width:100%;aspect-ratio:16/9;background:#000;
+    overflow:hidden;pointer-events:none;
+  }
+  .ps-hero > img, .ps-hero > video, .ps-hero > iframe{
+    position:absolute;inset:0;width:100%;height:100%;
+    object-fit:cover;border:0;display:block;
+    pointer-events:none;
+  }
+  .ps-hero .ps-video-placeholder{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:rgba(255,255,255,.65);font-size:14px;background:linear-gradient(135deg,#374151,#111827);
+  }
+  /* Bottom-fade scrim so the video blends into the dark card and gives the icon a clean read */
+  .ps-hero::before{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+    background:linear-gradient(180deg,
+      rgba(0,0,0,0) 0%,
+      rgba(0,0,0,0) 50%,
+      rgba(0,0,0,.30) 75%,
+      rgba(0,0,0,.65) 100%);
+  }
+  /* Subtle side vignette */
+  .ps-hero::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+    background:linear-gradient(90deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,.15) 100%);
+  }
+  .ps-hero .ps-video-label{
+    position:absolute;left:18px;bottom:18px;z-index:2;
+    background:rgba(0,0,0,.65);color:#fff;
+    font-size:12px;padding:5px 10px;border-radius:4px;
+    font-weight:500;letter-spacing:.4px;
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  }
+  /* When a hero precedes the header, icon overlaps deep into the dark scrim */
+  .ps-header.has-hero{padding-top:0;position:relative}
+  .ps-icon.overlap{
+    margin-top:-60px;
+    box-shadow:
+      0 0 0 4px #fff,
+      0 6px 20px rgba(0,0,0,.28),
+      0 2px 6px rgba(0,0,0,.16);
+    position:relative;z-index:3;
+  }
+
+  /* ============== DARK HEADER (doit777 H5 style) ============== */
+  .ps-dark-card{background:#0f1115;color:#fff;position:relative}
+  .ps-dark-card .ps-hero{
+    /* video bottom fades into the dark card seamlessly */
+  }
+  .ps-dark-card .ps-hero::before{
+    /* override the gradient to fade to the exact dark-card color */
+    background:linear-gradient(180deg,
+      rgba(0,0,0,0) 0%,
+      rgba(0,0,0,0) 30%,
+      rgba(15,17,21,.6) 70%,
+      rgba(15,17,21,1) 100%);
+  }
+  .ps-dark-card .ps-header{
+    background:transparent;color:#fff;padding:0 22px 0;
+  }
+  .ps-dark-card .ps-app-row{padding:18px 0 14px;gap:16px;align-items:center}
+  .ps-dark-card .ps-icon{
+    width:84px;height:84px;border-radius:18px;
+    margin-top:0;
+    box-shadow:0 4px 14px rgba(0,0,0,.5);
+  }
+  .ps-dark-card .ps-app-name{color:#fff;font-size:22px}
+  .ps-dark-card .ps-developer{color:var(--accent-color, #01b574);font-size:14px;margin-bottom:2px}
+  .ps-dark-card .ps-meta{color:rgba(255,255,255,.55);font-size:13px}
+  .ps-dark-card .ps-meta span+span::before{content:""}
+  .ps-dark-card .ps-meta span{display:block;line-height:1.5}
+
+  .ps-dark-card .ps-stats{
+    background:transparent;color:#fff;
+    margin:0;padding:14px 0 16px;
+    border-top:1px solid rgba(255,255,255,.08);border-bottom:none;
+    grid-template-columns:1fr 1fr 1fr;
+  }
+  .ps-dark-card .ps-stats{margin:0 22px}
+  .ps-dark-card .ps-stat{border-color:rgba(255,255,255,.08)}
+  .ps-dark-card .ps-stat-val{color:#fff;font-size:15px}
+  .ps-dark-card .ps-stat-val span{color:var(--accent-color, #01b574) !important}
+  .ps-dark-card .ps-stat-sub{color:rgba(255,255,255,.5)}
+  .ps-dark-card .ps-stat-val[data-age]{
+    border:1.5px solid rgba(255,255,255,.7);
+    color:rgba(255,255,255,.85);
+    border-radius:3px;padding:1px 6px;font-size:12px;
+  }
+
+  .ps-dark-card .ps-actions{
+    padding:16px 22px 14px;flex-direction:column;gap:0;
+  }
+  .ps-install-fullwidth{
+    width:100%;display:block;text-align:center;
+    background:var(--accent-color, #01b574);color:#fff;
+    border:0;border-radius:8px;
+    padding:14px;font-size:15px;font-weight:500;letter-spacing:.3px;
+    cursor:pointer;
+  }
+  .ps-install-fullwidth:hover{filter:brightness(.92)}
+
+  .ps-secondary{
+    display:flex;justify-content:center;gap:36px;
+    padding:18px 22px 8px;
+  }
+  .ps-secondary a{
+    color:var(--accent-color, #01b574);font-size:14px;font-weight:500;
+    display:inline-flex;align-items:center;gap:8px;
+    text-decoration:none;cursor:pointer;
+  }
+  .ps-secondary .ps-sec-icon{
+    width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;
+    color:var(--accent-color, #01b574);
+  }
+
+  .ps-device-hint{
+    color:rgba(255,255,255,.55);
+    padding:14px 22px 18px;
+    display:flex;align-items:center;gap:10px;
+    font-size:13px;
+  }
+  .ps-device-hint svg{width:18px;height:18px;flex-shrink:0;opacity:.6}
+
+  /* Floating contact widget — fixed on right side of viewport, always visible while scrolling */
+  .ps-contacts-stack{
+    position:fixed;right:14px;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;gap:12px;
+    z-index:99999;flex-shrink:0;
+  }
+  .ps-contacts-stack a{
+    width:48px;height:48px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    text-decoration:none;color:#fff;
+    box-shadow:0 4px 14px rgba(0,0,0,.35);
+    transition:transform .15s;
+  }
+  .ps-contacts-stack a:hover{transform:scale(1.08)}
+  .ps-contacts-stack a svg{width:24px;height:24px;fill:#fff}
+
+  /* Video lightbox modal */
+  .ps-video-modal{
+    position:fixed;inset:0;background:rgba(0,0,0,.88);
+    display:flex;align-items:center;justify-content:center;
+    z-index:9999;padding:24px;animation:fadeIn .15s ease;
+  }
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .ps-video-modal-inner{
+    width:100%;max-width:1000px;aspect-ratio:16/9;position:relative;
+    background:#000;border-radius:10px;overflow:hidden;
+    box-shadow:0 8px 40px rgba(0,0,0,.5);
+  }
+  .ps-video-modal-inner iframe, .ps-video-modal-inner video{
+    position:absolute;inset:0;width:100%;height:100%;border:0;
+  }
+  .ps-video-modal-close{
+    position:absolute;top:-44px;right:-4px;
+    width:36px;height:36px;border-radius:50%;
+    background:rgba(255,255,255,.15);border:0;color:#fff;cursor:pointer;
+    font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;
+  }
+  .ps-video-modal-close:hover{background:rgba(255,255,255,.25)}
+
+  .ps-screenshots-wrap{position:relative}
+  .ps-screenshots{
+    display:flex;gap:10px;overflow-x:auto;padding:14px 24px 12px;
+    scrollbar-width:none;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+  }
+  .ps-screenshots::-webkit-scrollbar{display:none}
+  .ps-screenshot{
+    height:280px;border-radius:8px;flex-shrink:0;
+    background:#eee;object-fit:cover;
+    box-shadow:0 1px 2px rgba(0,0,0,.06);
+    scroll-snap-align:center;
+  }
+  /* Pagination dots */
+  .ps-dots{
+    display:flex;justify-content:center;gap:6px;
+    padding:4px 24px 12px;
+  }
+  .ps-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:#dadce0;cursor:pointer;
+    transition:background .2s, width .2s, border-radius .2s;
+  }
+  .ps-dot.active{
+    background:var(--primary);width:18px;border-radius:3px;
+  }
+
+  /* Install button — progress bar overlay */
+  .ps-install,.ps-install-fullwidth{position:relative;overflow:hidden;isolation:isolate}
+  .ps-install-progress{
+    position:absolute;left:0;top:0;bottom:0;width:0%;
+    background:rgba(255,255,255,.22);
+    transition:width .08s linear;z-index:0;pointer-events:none;
+  }
+  .ps-install-text{position:relative;z-index:1}
+
+  .ps-section{padding:18px 24px;border-top:1px solid #eee}
+  .ps-section h2{font-size:18px;font-weight:600;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between}
+  .ps-section .arrow{color:var(--muted);font-size:18px}
+  .ps-about{font-size:14px;color:#3c4043;line-height:1.65;white-space:pre-wrap}
+  .ps-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .ps-tag{
+    border:1px solid var(--border);border-radius:14px;padding:6px 12px;
+    font-size:12px;color:var(--muted);
+  }
+  .ps-updated{font-size:12px;color:var(--muted);margin-top:14px}
+
+  .ps-safety-card{
+    border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:8px;
+  }
+  .ps-safety-item{display:flex;gap:12px;align-items:flex-start;padding:8px 0}
+  .ps-safety-item:not(:last-child){border-bottom:1px solid #f0f0f0}
+  .ps-safety-icon{
+    width:36px;height:36px;border-radius:50%;flex-shrink:0;
+    background:#e8f0fe;display:flex;align-items:center;justify-content:center;
+    font-size:18px;
+  }
+  .ps-safety-text{flex:1}
+  .ps-safety-title{font-size:14px;font-weight:500;margin:0 0 2px}
+  .ps-safety-desc{font-size:12px;color:var(--muted);margin:0}
+
+  .ps-rating-overview{display:flex;gap:30px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+  .ps-rating-big{font-size:48px;font-weight:300;line-height:1}
+  .ps-rating-stars{color:#01875f;font-size:14px;margin-top:6px}
+  .ps-rating-count{font-size:12px;color:var(--muted);margin-top:4px}
+  .ps-rating-bars{flex:1;min-width:240px;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center}
+  .ps-rating-num{font-size:12px;color:var(--muted)}
+  .ps-rating-bar{background:#e8eaed;border-radius:3px;height:8px;overflow:hidden}
+  .ps-rating-bar > span{display:block;height:100%;background:var(--primary);border-radius:3px}
+
+  .ps-review{padding:14px 0;border-bottom:1px solid #f0f0f0}
+  .ps-review:last-child{border-bottom:none}
+  .ps-review-head{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+  .ps-review-avatar{
+    width:32px;height:32px;border-radius:50%;
+    background:linear-gradient(135deg,#a3b1bf,#6b7d8f);
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    font-weight:500;font-size:13px;flex-shrink:0;
+  }
+  .ps-review-author{font-size:13px;font-weight:500}
+  .ps-review-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:2px}
+  .ps-review-stars{color:var(--primary);font-size:12px}
+  .ps-review-body{font-size:13px;color:#3c4043;margin:6px 0;line-height:1.55}
+  .ps-review-helpful{font-size:12px;color:var(--muted);margin-top:6px}
+
+  .ps-whatsnew{font-size:13px;color:#3c4043;white-space:pre-wrap;line-height:1.6}
+
+  .ps-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 24px}
+  .ps-info-item .k{font-size:12px;color:var(--muted);margin-bottom:2px}
+  .ps-info-item .v{font-size:13px;color:var(--text);font-weight:500;word-break:break-word}
+
+  .ps-footer{padding:18px 24px 28px;border-top:1px solid #eee;font-size:12px;color:var(--muted)}
+
+
+  .toast{
+    position:fixed;left:50%;bottom:30px;transform:translateX(-50%);
+    background:#202124;color:#fff;padding:10px 18px;border-radius:24px;
+    font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:100;
+  }
+  .toast.show{opacity:1}
+
+  @media (max-width: 1000px){
+    .app{grid-template-columns:1fr}
+    .editor{border-right:none;border-bottom:1px solid var(--border);max-height:50vh}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar" id="topbar"></div>
+
+<div class="pages-wrap" id="pages-view" style="display:none">
+  <div class="pages-toolbar">
+    <input type="text" class="pages-search" id="pages-search" placeholder="Search pages…">
+    <span style="font-size:12px;color:var(--muted)" id="pages-count"></span>
+  </div>
+  <div id="pages-list-container"></div>
+</div>
+
+<div class="app" id="editor-view" style="display:none">
+  <aside class="editor" id="editor"></aside>
+  <main class="preview-wrap">
+    <div class="preview">
+      <div class="ps" id="preview"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+  function updateExportBadge(){
+    var b = document.getElementById('export-mode-badge');
+    if (!b) return;
+    if (typeof state === 'undefined') return;
+    var meta = (typeof TEMPLATE_META !== 'undefined' && TEMPLATE_META[state.template]) || TEMPLATE_META.screenshots;
+    var tplName = meta.icon + " " + meta.label;
+    b.textContent = "→ " + tplName + " · skin template";
+  }
+</script>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===========================================================
+   1. Default state
+   =========================================================== */
+const LANGUAGE_PRESETS = {
+  "en-US": {
+    language: "English",
+    locale: "en-US",
+    chrome: {
+      topNavItems: [{ label: "Games" }, { label: "Apps", active: true }, { label: "Books" }, { label: "Kids" }],
+      bottomNavItems: [{ icon: "🎮", label: "Games" }, { icon: "📱", label: "Apps", active: true }, { icon: "📚", label: "Books" }, { icon: "🧒", label: "Kids" }]
+    },
+    cta: { installText: "Install", progressText: "Downloading" },
+    video: { label: "Trailer", deviceHintText: "This app is available for all your devices" },
+    stats: { downloadsLabel: "Downloads", ageRatingLabel: "Rated for 12+" },
+    ui: {
+      reviewsLabel: "reviews", containsAds: "Contains ads", inAppPurchases: "In-app purchases", editorsChoice: "Editors' Choice",
+      share: "Share", addToWishlist: "Add to wishlist", available: "Available", aboutTitle: "About this app", updatedOn: "Updated on",
+      dataSafetyTitle: "Data safety", dataSafetyIntro: "Here's more information the developer has provided about the kinds of data this app may collect and share:",
+      ratingsTitle: "Ratings and reviews", helpfulSuffix: "people found this review helpful", whatsNewTitle: "What's new", appInfoTitle: "App info",
+      version: "Version", updated: "Updated", size: "Size", requires: "Requires", contentRating: "Content rating", permissions: "Permissions",
+      supportTitle: "Application support", supportEmail: "Support email", privacyPolicy: "Privacy policy", developerInfoTitle: "Developer info",
+      footerNote: "This page is for internal demo purposes"
+    }
+  },
+  "es-MX": {
+    language: "Español",
+    locale: "es-MX",
+    chrome: {
+      topNavItems: [{ label: "Juegos" }, { label: "Apps", active: true }, { label: "Libros" }, { label: "Niños" }],
+      bottomNavItems: [{ icon: "🎮", label: "Juegos" }, { icon: "📱", label: "Apps", active: true }, { icon: "📚", label: "Libros" }, { icon: "🧒", label: "Niños" }]
+    },
+    cta: { installText: "Instalar", progressText: "Descargando" },
+    video: { label: "Tráiler", deviceHintText: "Esta aplicación está disponible para todos tus dispositivos" },
+    stats: { downloadsLabel: "Descargas", ageRatingLabel: "Clasificación 12+" },
+    ui: {
+      reviewsLabel: "opiniones", containsAds: "Contiene anuncios", inAppPurchases: "Compras directas desde la app", editorsChoice: "Selección de los editores",
+      share: "Compartir", addToWishlist: "Agregar a la lista de deseos", available: "Disponible", aboutTitle: "Acerca de esta app", updatedOn: "Actualizado el",
+      dataSafetyTitle: "Seguridad de los datos", dataSafetyIntro: "Aquí tienes más información proporcionada por el desarrollador sobre los datos que esta app puede recopilar y compartir:",
+      ratingsTitle: "Calificaciones y opiniones", helpfulSuffix: "personas encontraron útil esta opinión", whatsNewTitle: "Novedades", appInfoTitle: "Información de la app",
+      version: "Versión", updated: "Actualización", size: "Tamaño", requires: "Requiere", contentRating: "Clasificación del contenido", permissions: "Permisos",
+      supportTitle: "Asistencia de la aplicación", supportEmail: "Correo de asistencia", privacyPolicy: "Política de privacidad", developerInfoTitle: "Información del desarrollador",
+      footerNote: "Esta página es solo para demostraciones internas"
+    }
+  },
+  "pt-BR": {
+    language: "Português",
+    locale: "pt-BR",
+    chrome: {
+      topNavItems: [{ label: "Jogos" }, { label: "Apps", active: true }, { label: "Livros" }, { label: "Crianças" }],
+      bottomNavItems: [{ icon: "🎮", label: "Jogos" }, { icon: "📱", label: "Apps", active: true }, { icon: "📚", label: "Livros" }, { icon: "🧒", label: "Crianças" }]
+    },
+    cta: { installText: "Instalar", progressText: "Baixando" },
+    video: { label: "Trailer", deviceHintText: "Este app está disponível para todos os seus dispositivos" },
+    stats: { downloadsLabel: "Downloads", ageRatingLabel: "Classificação 12+" },
+    ui: {
+      reviewsLabel: "avaliações", containsAds: "Contém anúncios", inAppPurchases: "Compras no app", editorsChoice: "Escolha dos editores",
+      share: "Compartilhar", addToWishlist: "Adicionar à lista de desejos", available: "Disponível", aboutTitle: "Sobre este app", updatedOn: "Atualizado em",
+      dataSafetyTitle: "Segurança dos dados", dataSafetyIntro: "Veja mais informações fornecidas pelo desenvolvedor sobre os tipos de dados que este app pode coletar e compartilhar:",
+      ratingsTitle: "Classificações e avaliações", helpfulSuffix: "pessoas acharam esta avaliação útil", whatsNewTitle: "Novidades", appInfoTitle: "Informações do app",
+      version: "Versão", updated: "Atualizado", size: "Tamanho", requires: "Requer", contentRating: "Classificação do conteúdo", permissions: "Permissões",
+      supportTitle: "Suporte do app", supportEmail: "E-mail de suporte", privacyPolicy: "Política de privacidade", developerInfoTitle: "Informações do desenvolvedor",
+      footerNote: "Esta página é apenas para demonstrações internas"
+    }
+  },
+  "id-ID": {
+    language: "Bahasa Indonesia",
+    locale: "id-ID",
+    chrome: {
+      topNavItems: [{ label: "Game" }, { label: "Aplikasi", active: true }, { label: "Buku" }, { label: "Anak-anak" }],
+      bottomNavItems: [{ icon: "🎮", label: "Game" }, { icon: "📱", label: "Aplikasi", active: true }, { icon: "📚", label: "Buku" }, { icon: "🧒", label: "Anak-anak" }]
+    },
+    cta: { installText: "Instal", progressText: "Mengunduh" },
+    video: { label: "Trailer", deviceHintText: "Aplikasi ini tersedia untuk semua perangkat Anda" },
+    stats: { downloadsLabel: "Download", ageRatingLabel: "Rating 12+" },
+    ui: {
+      reviewsLabel: "ulasan", containsAds: "Berisi iklan", inAppPurchases: "Pembelian dalam aplikasi", editorsChoice: "Pilihan Editor",
+      share: "Bagikan", addToWishlist: "Tambahkan ke wishlist", available: "Tersedia", aboutTitle: "Tentang aplikasi ini", updatedOn: "Diperbarui pada",
+      dataSafetyTitle: "Keamanan data", dataSafetyIntro: "Berikut informasi dari developer tentang jenis data yang mungkin dikumpulkan dan dibagikan aplikasi ini:",
+      ratingsTitle: "Rating dan ulasan", helpfulSuffix: "orang merasa ulasan ini berguna", whatsNewTitle: "Yang baru", appInfoTitle: "Info aplikasi",
+      version: "Versi", updated: "Diperbarui", size: "Ukuran", requires: "Memerlukan", contentRating: "Rating konten", permissions: "Izin",
+      supportTitle: "Dukungan aplikasi", supportEmail: "Email dukungan", privacyPolicy: "Kebijakan privasi", developerInfoTitle: "Info developer",
+      footerNote: "Halaman ini hanya untuk demo internal"
+    }
+  }
+};
+
+const OPENAI_LATEST_COPY_MODEL = "gpt-5.2";
+const TEMPLATE_META = {
+  screenshots: { icon: "📸", label: "Store screenshots", desc: "标准应用商店截图页。" },
+  video: { icon: "🎬", label: "Uploaded video", desc: "顶部视频商店页。" }
+};
+
+const DEFAULT_STATE = {
+  chrome: {                                         // Fake Play Store top + bottom nav bars
+    showTopNav: true,
+    showBottomNav: true,
+    brand: "Google Play",
+    topNavItems: [
+      { label: "Juegos" },
+      { label: "Aplicaciones", active: true },
+      { label: "Libros" },
+      { label: "Niños" }
+    ],
+    bottomNavItems: [
+      { icon: "🎮", label: "Juegos" },
+      { icon: "📱", label: "Aplicaciones", active: true },
+      { icon: "📚", label: "Libros" },
+      { icon: "🧒", label: "Niños" }
+    ]
+  },
+  template: "screenshots",                          // "screenshots" | "video"
+  video: {
+    url: "",                                        // uploaded video data URL or direct video URL
+    poster: "",                                     // fallback / poster image (used when no URL or while video loads)
+    label: "Trailer",                               // small label shown on the video
+    autoplay: true,                                 // inline autoplay (always recommended)
+    muted: true,                                    // required for autoplay in modern browsers
+    loop: true,                                     // loop continuously
+    showLabel: true,                                // show the small "Trailer" label
+    darkHeader: true,                               // doit777-style dark header card
+    accentColor: "#01b574",                         // green accent on dark header
+    deviceHintText: "Esta aplicación está disponible para todos tus dispositivos",
+    showDeviceHint: true,
+    contacts: [                                     // floating right-side contact buttons
+      // { type: "telegram" | "whatsapp" | "custom", url: "...", icon?, bg? }
+    ]
+  },
+  locale: {
+    language: "English",                            // Target language for generated copy and UI labels
+    locale: "en-US"                                 // Used for <html lang> and date style guidance
+  },
+  app: {
+    name: "Larus Wolf",
+    developer: "Beijing Wolf Tech Co., Ltd.",
+    icon: "",
+    iconBg: "#5b6cff",
+    category: "Social",
+    containsAds: true,
+    inAppPurchases: true,
+    editorChoice: false,
+  },
+  stats: {
+    rating: 4.4,
+    reviewCount: "125K",
+    downloads: "10M+",
+    downloadsLabel: "Downloads",
+    ageRating: "12+",
+    ageRatingLabel: "Rated for 12+",
+    contentRating: "Teen"
+  },
+  cta: {
+    installText: "Install",
+    price: "",
+    actionKey: "install",                           // External module resolves the actual link/action by this key
+    showProgressBar: true,                          // fake 0%-100% progress before redirect
+    progressDuration: 1600,                         // ms total
+    progressText: "Downloading"                     // text shown while progress is filling (e.g. "Downloading", "Installing")
+  },
+  screenshotsConfig: {
+    showDots: true,                                 // pagination dots below carousel
+    autoplay: true,                                 // auto-advance slides
+    autoplayInterval: 4000                          // ms between auto-advances
+  },
+  screenshots: [
+    { url: "", color: "#1f2937", label: "Home" },
+    { url: "", color: "#7c3aed", label: "Chat" },
+    { url: "", color: "#0ea5e9", label: "Discover" },
+    { url: "", color: "#f97316", label: "Profile" }
+  ],
+  about: {
+    description: "Larus Wolf is a next-generation social app where you can meet people who match your vibe.\n\n• Interest-based discovery — feeds tuned to what actually interests you\n• Crystal-clear voice rooms — drop in for a chat anywhere, anytime\n• Reward your creativity — top creators earn traffic and bonuses\n• Privacy first — strict moderation and built-in safeguards for younger users",
+    tags: ["Social", "Chat", "Voice room", "Community", "Discover"],
+    updated: "April 20, 2026"
+  },
+  safety: [
+    { icon: "🔒", title: "Data is encrypted in transit", desc: "Your data is transferred over a secure connection" },
+    { icon: "🗑️", title: "You can request data deletion", desc: "The developer provides a way to request your data be deleted" },
+    { icon: "👤", title: "No data shared with third parties", desc: "Learn more about how developers declare sharing" }
+  ],
+  ratings: { distribution: { 5: 70, 4: 18, 3: 6, 2: 3, 1: 3 } },
+  reviews: [
+    { author: "Alex Carter",    rating: 5, date: "April 22, 2026", text: "Clean UI, thoughtful interactions, and the voice rooms actually feel premium. Highly recommend.", helpful: 128, version: "v2.4.1" },
+    { author: "Mia Patel",      rating: 4, date: "April 18, 2026", text: "Solid overall, would love more interest categories. Audio quality in voice rooms is excellent.",     helpful: 56,  version: "v2.4.0" },
+    { author: "Daniel Wu",      rating: 5, date: "April 15, 2026", text: "Met some really fun people here. Community vibe is good and moderation feels active.",          helpful: 41,  version: "v2.4.0" }
+  ],
+  whatsnew: "v2.4.1\n• Brand-new Discover feed — find people and topics that match your interests\n• Improved voice room stability and lower latency\n• Fixed crashes on certain devices\n• Finer-grained privacy controls for profile visibility",
+  info: {
+    version: "2.4.1",
+    updated: "April 20, 2026",
+    size: "86 MB",
+    requires: "Android 7.0+",
+    contentRating: "Teen",
+    permissions: "Network, Camera, Microphone, Storage",
+    supportEmail: "support@larus.com",
+    developerName: "Beijing Wolf Tech Co., Ltd.",
+    developerEmail: "support@larus.com",
+    developerWebsite: "https://larus.com",
+    developerAddress: "",
+    developerCountry: "México",
+    privacyPolicy: "https://larus.com/privacy"
+  },
+  ui: {
+    reviewsLabel: "reviews",
+    containsAds: "Contains ads",
+    inAppPurchases: "In-app purchases",
+    editorsChoice: "Editors' Choice",
+    share: "Share",
+    addToWishlist: "Add to wishlist",
+    available: "Available",
+    aboutTitle: "About this app",
+    updatedOn: "Updated on",
+    dataSafetyTitle: "Data safety",
+    dataSafetyIntro: "Here's more information the developer has provided about the kinds of data this app may collect and share:",
+    ratingsTitle: "Ratings and reviews",
+    helpfulSuffix: "people found this review helpful",
+    whatsNewTitle: "What's new",
+    appInfoTitle: "App info",
+    version: "Version",
+    updated: "Updated",
+    size: "Size",
+    requires: "Requires",
+    contentRating: "Content rating",
+    permissions: "Permissions",
+    supportTitle: "Application support",
+    supportEmail: "Support email",
+    privacyPolicy: "Privacy policy",
+    developerInfoTitle: "Developer info",
+    footerNote: "This page is for internal demo purposes"
+  },
+  imagePrompts: {
+    icon: "",
+    screenshots: [
+      { label: "Home", prompt: "" },
+      { label: "Chat", prompt: "" },
+      { label: "Discover", prompt: "" },
+      { label: "Profile", prompt: "" }
+    ]
+  },
+  theme: { primary: "#01875f" },
+  ai: {
+    provider: "openai",                             // OpenAI / compatible chat-completions API
+    endpoint: "https://api.openai.com/v1/chat/completions",
+    model: OPENAI_LATEST_COPY_MODEL,
+    apiKey: "",
+    context: "",
+    sendScreenshots: true
+  }
+};
+
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+/* ===========================================================
+   2. Helpers
+   =========================================================== */
+const $ = (s,el=document)=>el.querySelector(s);
+const $$ = (s,el=document)=>[...el.querySelectorAll(s)];
+const escapeHtml = s => String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nl2br = s => escapeHtml(s).replace(/\n/g,"<br>");
+const stars = n => "★★★★★☆☆☆☆☆".slice(5-Math.round(n), 10-Math.round(n));
+const showToast = msg => {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>t.classList.remove("show"), 1800);
+};
+const transparentPx = ()=>"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+function fileToDataURL(file){
+  return new Promise((res,rej)=>{
+    const fr = new FileReader();
+    fr.onload = ()=>res(fr.result); fr.onerror = rej;
+    fr.readAsDataURL(file);
+  });
+}
+
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
+
+function applyLanguagePreset(localeCode){
+  const preset = LANGUAGE_PRESETS[localeCode] || LANGUAGE_PRESETS["en-US"];
+  state.locale = { language: preset.language, locale: preset.locale };
+  state.chrome.topNavItems = clone(preset.chrome.topNavItems);
+  state.chrome.bottomNavItems = clone(preset.chrome.bottomNavItems);
+  state.cta = { ...state.cta, ...preset.cta };
+  state.video = { ...state.video, ...preset.video };
+  state.stats = { ...state.stats, ...preset.stats };
+  state.ui = { ...state.ui, ...preset.ui };
+}
+
+function renderLanguageOptions(){
+  return Object.entries(LANGUAGE_PRESETS).map(([code, preset]) =>
+    `<option value="${escapeHtml(code)}" ${state.locale.locale===code?'selected':''}>${escapeHtml(preset.language)} (${escapeHtml(code)})</option>`
+  ).join("");
+}
+
+
+/* ===========================================================
+   3. AI prompt — what we send to the model
+   =========================================================== */
+const AI_SYSTEM_PROMPT = `You generate realistic, natural-sounding content and production-ready image prompts for a Google Play-style landing page. Your output is used by an internal operations team to assemble page skins and marketing previews. Keep the tone authentic, localized, and on-brand for the app described.`;
+
+function buildAIUserPrompt(s){
+  return `Generate complete Google Play-style landing page content for the following app.
+
+APP NAME: ${s.app.name}
+DEVELOPER: ${s.app.developer}
+CATEGORY: ${s.app.category}
+TARGET LANGUAGE: ${s.locale.language} (${s.locale.locale})
+MODEL: ${OPENAI_LATEST_COPY_MODEL}
+ADDITIONAL CONTEXT: ${s.ai.context || "(none provided — infer from app name and screenshots)"}
+${s.ai.sendScreenshots && s.screenshots.some(x=>x.url) ? "Screenshots are attached — use them to infer features, UI style, and content focus." : ""}
+
+Return a SINGLE JSON object with EXACTLY this shape (no markdown fences, no commentary, no preamble):
+
+{
+  "ui": {
+    "reviewsLabel": "<localized plural label, e.g. 'reviews'>",
+    "containsAds": "<localized Play Store meta label>",
+    "inAppPurchases": "<localized Play Store meta label>",
+    "editorsChoice": "<localized label>",
+    "share": "<localized secondary action>",
+    "addToWishlist": "<localized secondary action>",
+    "available": "<localized availability label>",
+    "aboutTitle": "<localized section title>",
+    "updatedOn": "<localized 'Updated on'>",
+    "dataSafetyTitle": "<localized section title>",
+    "dataSafetyIntro": "<localized one-sentence intro>",
+    "ratingsTitle": "<localized section title>",
+    "helpfulSuffix": "<localized suffix after helpful count>",
+    "whatsNewTitle": "<localized section title>",
+    "appInfoTitle": "<localized section title>",
+    "version": "<localized field label>",
+    "updated": "<localized field label>",
+    "size": "<localized field label>",
+    "requires": "<localized field label>",
+    "contentRating": "<localized field label>",
+    "permissions": "<localized field label>",
+    "supportTitle": "<localized section title>",
+    "supportEmail": "<localized field label>",
+    "privacyPolicy": "<localized field label>",
+    "developerInfoTitle": "<localized section title>",
+    "footerNote": "<localized internal-demo note>"
+  },
+  "stats": {
+    "rating": <number 3.8 - 4.9, one decimal>,
+    "reviewCount": "<human readable like '125K' or '2.3M'>",
+    "downloads": "<like '10M+', '1M+', '500K+'>",
+    "ageRating": "<e.g. '12+', '17+', 'Everyone'>"
+  },
+  "about": {
+    "description": "<150-300 words. Start with a punchy 1-2 sentence hook. Then 4-6 feature bullets, each starting with '• '. Use \\n for line breaks. ALL English unless app is clearly localized.>",
+    "tags": ["<5-8 short topic tags>"],
+    "updated": "<recent natural date e.g. 'April 20, 2026'>"
+  },
+  "safety": [
+    { "icon": "<single emoji>", "title": "<short>", "desc": "<short>" }
+    // Provide 3-5 entries appropriate for this app category
+  ],
+  "ratings": {
+    "distribution": { "5": <int>, "4": <int>, "3": <int>, "2": <int>, "1": <int> }
+    // Realistic skew matching the rating above. Roughly sum to 100.
+  },
+  "reviews": [
+    {
+      "author": "<realistic full name>",
+      "rating": <1-5>,
+      "date": "<2026 natural date>",
+      "text": "<1-3 authentic-sounding sentences. Avoid marketing speak. Mix opinions.>",
+      "helpful": <0-500>,
+      "version": "<vX.Y.Z>"
+    }
+    // 5-6 entries: mostly 4-5 stars, include 1 critical 2-3 star review.
+  ],
+  "whatsnew": "<Version line + 3-5 bullet points starting with '• '. Use \\n for line breaks.>",
+  "info": {
+    "version": "<X.Y.Z>",
+    "updated": "<same as about.updated>",
+    "size": "<like '86 MB'>",
+    "requires": "<like 'Android 7.0+'>",
+    "contentRating": "<like 'Teen', 'Everyone', 'Mature 17+'>",
+    "permissions": "<comma-separated, relevant to app type>",
+    "supportEmail": "<plausible support email like 'soporte@app.com'>",
+    "developerName": "<legal entity name, e.g. 'Adela Mancilla Fernández' for an individual or 'Beijing Wolf Tech Co., Ltd.' for a company>",
+    "developerEmail": "<usually same as supportEmail>",
+    "developerWebsite": "<https URL>",
+    "developerAddress": "<optional physical address>",
+    "developerCountry": "<plausible country, e.g. 'México', 'Brazil', 'Indonesia'>",
+    "privacyPolicy": "<https URL>"
+  },
+  "imagePrompts": {
+    "icon": "<prompt for a 512x512 app icon. No text in image unless brand mark is supplied. Mention style, colors, app category, and safe composition.>",
+    "screenshots": [
+      { "label": "<short localized screen label>", "prompt": "<prompt for a vertical app-store screenshot mockup: screen goal, UI content, mood, color, and what NOT to include>" }
+      // Provide one prompt per current screenshot slot, matching the slot labels when possible.
+    ]
+  }
+}
+
+CRITICAL:
+- Return ONLY the raw JSON object. No \`\`\`json fences. No explanatory text.
+- All generated copy, UI labels, review text, dates, and image prompt labels MUST be in ${s.locale.language}. Use ${s.locale.locale} conventions where helpful.
+- Reviews must read as if written by real users — diverse voices, specific details, occasional minor complaints.
+- Keep the rating consistent with the distribution (4.5 ★ should not have 50% 1-star reviews).
+- Do not return generated image files or base64. Return reusable image prompts only.
+- Image prompt logic: derive visual direction from app name, category, theme color, icon/background, uploaded screenshots, and operator context; keep screenshots realistic as product UI mockups, keep icon simple at small sizes, and avoid misleading badges, platform logos, prices, QR codes, or install/download claims in the image itself.
+- Do not generate or prompt for the game cover / hero poster. Operators upload that asset manually.`;
+}
+
+function buildImagePromptPlan(s){
+  const screenSlots = (s.screenshots || []).map((sc, i) =>
+    `Screenshot ${i+1} (${sc.label || "untitled"}): vertical app-store screenshot prompt based on this screen's role, target language ${s.locale.language}, app category ${s.app.category}, theme ${s.theme.primary}, and any uploaded reference image in that slot.`
+  ).join("\n");
+  return `IMAGE PROMPT LOGIC
+
+Shared rules:
+- The AI returns prompts, not image files; operators can paste these prompts into the approved image-generation workflow.
+- Visual direction is inferred from: app name, category, developer, target language, theme color, uploaded screenshots, current placeholder labels, icon background, and Extra context.
+- App icon: 512x512, simple recognizable mark, strong silhouette, no tiny copy, no Play Store/Android/Google logos unless supplied by the operator.
+- Game cover / hero poster: not generated by AI; operators upload this manually.
+- Screenshots: vertical app-store style UI mockups, one coherent product story across slots, localized UI microcopy when visible, no QR codes, no misleading awards, no prices unless the operator supplied them.
+
+Current slots:
+Icon: ${s.imagePrompts.icon || "(AI will generate)"}
+${screenSlots || "No screenshot slots yet."}`;
+}
+
+function buildPromptReference(s){
+  return `FIELD → PROMPT MAPPING
+
+Global inputs:
+- locale.language / locale.locale → target language and regional style for every generated field.
+- app.name / app.developer / app.category / theme.primary / ai.context / uploaded screenshots → source facts and visual direction.
+
+Generated copy fields:
+- ui.* → all fixed Play Store-style labels visible in the exported page.
+- stats.rating / reviewCount / downloads / ageRating → realistic social-proof numbers.
+- about.description / tags / updated → app positioning, feature bullets, category tags, update date.
+- safety[] → localized data-safety cards appropriate to the app category.
+- ratings.distribution → percentage bars consistent with stats.rating.
+- reviews[] → authentic localized user reviews with dates, ratings, helpful counts, and versions.
+- whatsnew → version line and localized bullet changelog.
+- info.* → app version, size, Android requirement, permissions, support/developer metadata, privacy URL.
+
+Generated image prompt fields:
+- imagePrompts.icon → 512x512 app icon prompt.
+- imagePrompts.screenshots[] → one vertical screenshot/mockup prompt per screenshot slot.
+- Game cover / hero poster is operator-uploaded only and is not requested from AI.
+
+Button/link boundary:
+- cta.installText / price / progressText / actionKey only control the visual button skin.
+- The exported template does not contain install-link, attribution, tracking, or click-reporting code.
+- Another frontend/backend module should resolve the real URL for data-lp-action="${s.cta.actionKey || "install"}".`;
+}
+
+/* ===========================================================
+   4. AI call — OpenAI / compatible
+   =========================================================== */
+async function callAI(){
+  const status = $("#ai-status");
+  const btn = $("#btn-ai-generate");
+  if (!state.ai.apiKey){ flashStatus("err","API key is required."); return; }
+  const missing = [];
+  if (!state.app.name.trim()) missing.push("App name");
+  if (!state.app.developer.trim()) missing.push("Developer");
+  if (!state.app.category.trim()) missing.push("Category");
+  if (missing.length){ flashStatus("err","Required before AI: " + missing.join(", ")); return; }
+  status.className = "ai-status busy";
+  status.textContent = "Calling model… this can take 10-30s.";
+  btn.disabled = true;
+
+  try {
+    const userPrompt = buildAIUserPrompt(state);
+    const imgs = state.ai.sendScreenshots
+      ? state.screenshots.filter(s => s.url && s.url.startsWith("data:image")).slice(0,4)
+      : [];
+
+    const raw = await callOpenAI(userPrompt, imgs);
+
+    const json = extractJSON(raw);
+    if (!json) throw new Error("Could not parse JSON from model response. Raw output:\n\n" + raw.slice(0, 800));
+
+    mergeAIResponse(json);
+    renderEditor();
+    renderPreview();
+    flashStatus("ok", "Content generated and applied.");
+  } catch(err){
+    console.error(err);
+    flashStatus("err", "Error: " + (err.message || err));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function callOpenAI(userPrompt, imgs){
+  const userContent = [];
+  for (const img of imgs){
+    userContent.push({ type:"image_url", image_url:{ url: img.url } });
+  }
+  userContent.push({ type:"text", text: userPrompt });
+
+  const res = await fetch(state.ai.endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${state.ai.apiKey}`
+    },
+    body: JSON.stringify({
+      model: OPENAI_LATEST_COPY_MODEL,
+      messages: [
+        { role:"system", content: AI_SYSTEM_PROMPT },
+        { role:"user",   content: userContent }
+      ],
+      max_completion_tokens: 4096
+    })
+  });
+  if (!res.ok){
+    const t = await res.text();
+    throw new Error(`API ${res.status}: ${t}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
+
+function extractJSON(raw){
+  if (!raw) return null;
+  // try direct parse
+  try { return JSON.parse(raw); } catch(_){}
+  // strip ```json fences
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]+?)```/);
+  if (fenced){ try { return JSON.parse(fenced[1]); } catch(_){} }
+  // grab first {…}
+  const first = raw.indexOf("{"); const last = raw.lastIndexOf("}");
+  if (first >= 0 && last > first){
+    try { return JSON.parse(raw.slice(first, last+1)); } catch(_){}
+  }
+  return null;
+}
+
+function mergeAIResponse(json){
+  // Selectively merge AI output into state — preserve user-uploaded icons/screenshots
+  if (json.ui)      state.ui      = { ...state.ui,      ...json.ui };
+  if (json.stats)   state.stats   = { ...state.stats,   ...json.stats };
+  if (json.about)   state.about   = { ...state.about,   ...json.about };
+  if (json.safety && Array.isArray(json.safety))   state.safety  = json.safety;
+  if (json.ratings && json.ratings.distribution){
+    state.ratings.distribution = {
+      5: +json.ratings.distribution[5] || 0,
+      4: +json.ratings.distribution[4] || 0,
+      3: +json.ratings.distribution[3] || 0,
+      2: +json.ratings.distribution[2] || 0,
+      1: +json.ratings.distribution[1] || 0,
+    };
+  }
+  if (json.reviews && Array.isArray(json.reviews))  state.reviews   = json.reviews;
+  if (json.whatsnew)                                state.whatsnew  = json.whatsnew;
+  if (json.info)    state.info    = { ...state.info,    ...json.info };
+  if (json.imagePrompts){
+    state.imagePrompts = {
+      ...state.imagePrompts,
+      icon: json.imagePrompts.icon || state.imagePrompts.icon,
+      screenshots: Array.isArray(json.imagePrompts.screenshots)
+        ? json.imagePrompts.screenshots
+        : state.imagePrompts.screenshots
+    };
+  }
+}
+
+function flashStatus(kind,msg){
+  const s = $("#ai-status");
+  s.className = "ai-status " + kind;
+  s.textContent = msg;
+}
+
+function setProviderDefaults(provider){
+  state.ai.provider = provider === "custom" ? "custom" : "openai";
+  if (state.ai.provider === "openai"){
+    state.ai.endpoint = "https://api.openai.com/v1/chat/completions";
+    state.ai.model = OPENAI_LATEST_COPY_MODEL;
+  }
+}
+
+/* ===========================================================
+   5. Editor render
+   =========================================================== */
+function renderEditor(){
+  const ed = $("#editor");
+  ed.innerHTML = `
+  <details class="section" open>
+    <summary>必填：APP basics</summary>
+    <div class="section-body">
+      <p class="helper" style="margin-top:0">运营生成前只需要先填这里：语言、App 基础信息、页面样式和必要素材。下面内容都可以先交给 AI 生成，生成后仍然可以手动修改。</p>
+      <div class="field">
+        <label>Language</label>
+        <select id="locale-select">${renderLanguageOptions()}</select>
+        <p class="helper">选择后会立即切换页面已有固定文案，比如导航、按钮、板块标题、评论标签等。</p>
+      </div>
+      <div class="field">
+        <label>App icon (recommended 512×512 PNG)</label>
+        <div class="img-input">
+          <img class="img-thumb lg" id="icon-thumb" src="${state.app.icon || transparentPx()}" style="background:${state.app.iconBg}">
+          <input type="file" id="icon-file" accept="image/*" />
+          <button class="btn btn-sm btn-ghost" data-clear-img="icon">Clear</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>App name *</label><input data-bind="app.name" type="text" value="${escapeHtml(state.app.name)}"></div>
+        <div class="field"><label>Developer *</label><input data-bind="app.developer" type="text" value="${escapeHtml(state.app.developer)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Category *</label><input data-bind="app.category" type="text" value="${escapeHtml(state.app.category)}"></div>
+        <div class="field"><label>Primary color</label><input data-bind="theme.primary" type="text" value="${escapeHtml(state.theme.primary)}"></div>
+      </div>
+      <div class="field"><label>Icon background (when no image)</label><input data-bind="app.iconBg" type="text" value="${escapeHtml(state.app.iconBg)}"></div>
+      <div class="row">
+        <label class="check"><input type="checkbox" data-bind="app.containsAds" ${state.app.containsAds?"checked":""}> ${escapeHtml(state.ui.containsAds)}</label>
+        <label class="check"><input type="checkbox" data-bind="app.inAppPurchases" ${state.app.inAppPurchases?"checked":""}> ${escapeHtml(state.ui.inAppPurchases)}</label>
+      </div>
+      <label class="check"><input type="checkbox" data-bind="app.editorChoice" ${state.app.editorChoice?"checked":""}> ${escapeHtml(state.ui.editorsChoice)}</label>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #ddd">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">Page layout</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
+          ${Object.entries(TEMPLATE_META).map(([key, meta])=>`
+            <label class="tpl-card" style="cursor:pointer;padding:14px;border:2px solid ${state.template===key?'#01875f':'#e0e0e0'};border-radius:10px;background:${state.template===key?'#f0fdf4':'#fff'}">
+              <input type="radio" name="tpl" value="${key}" ${state.template===key?'checked':''} style="display:none" data-template-pick="1">
+              <div style="font-weight:600;font-size:14px;margin-bottom:4px">${meta.icon} ${escapeHtml(meta.label)}</div>
+              <div style="font-size:12px;color:var(--muted);line-height:1.5">${escapeHtml(meta.desc)}</div>
+            </label>
+          `).join("")}
+        </div>
+      </div>
+      ${state.template === 'video' ? `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #ddd">
+          <div class="field">
+            <label>Hero video upload</label>
+            <div class="img-input">
+              <input type="file" id="video-file" accept="video/*" />
+              <button class="btn btn-sm btn-ghost" id="video-clear">Clear</button>
+            </div>
+            <p class="helper">推荐上传 MP4/WebM。视频会静音、自动播放、循环，动态效果沿用默认设置。</p>
+          </div>
+          <div class="field">
+            <label>Game cover image upload (optional fallback)</label>
+            <div class="img-input">
+              <img class="img-thumb" src="${state.video.poster || transparentPx()}" style="background:#222">
+              <input type="file" id="video-poster-file" accept="image/*" />
+              <button class="btn btn-sm btn-ghost" id="video-poster-clear">Clear</button>
+            </div>
+          </div>
+        </div>
+      ` : ""}
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #ddd">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">AI inputs</div>
+        <p class="helper" style="margin-top:0">这些都会传给 AI。模型固定使用当前最新高质量模型：<code>${OPENAI_LATEST_COPY_MODEL}</code>。</p>
+        <div class="field">
+          <label>API URL</label>
+          <input data-bind="ai.endpoint" type="text" value="${escapeHtml(state.ai.endpoint)}">
+        </div>
+        <div class="field">
+          <label>API Key (kept in memory only — never saved or exported)</label>
+          <input data-bind="ai.apiKey" type="password" value="${escapeHtml(state.ai.apiKey)}" placeholder="sk-... or your key">
+        </div>
+        <div class="field">
+          <label>Extra context for the model (optional)</label>
+          <textarea data-bind="ai.context" rows="3" placeholder="e.g. 'Casino-style slots game, audience is adults 25-45 in LATAM, focus on big-win moments and daily bonuses.'">${escapeHtml(state.ai.context)}</textarea>
+        </div>
+        <label class="check"><input type="checkbox" data-bind="ai.sendScreenshots" ${state.ai.sendScreenshots?'checked':''}> Send uploaded screenshots to the model (multimodal)</label>
+      </div>
+    </div>
+  </details>
+  <details class="section" style="display:none">
+    <summary>📱 Page chrome (top + bottom nav)</summary>
+    <div class="section-body">
+      <p class="helper" style="margin-top:0">Fake Google Play navigation bars at the top and bottom of the page (matches the real Play Store H5 layout).</p>
+      <div class="row">
+        <label class="check"><input type="checkbox" data-bind="chrome.showTopNav" ${state.chrome.showTopNav?'checked':''}> Show top nav bar</label>
+        <label class="check"><input type="checkbox" data-bind="chrome.showBottomNav" ${state.chrome.showBottomNav?'checked':''}> Show bottom nav bar</label>
+      </div>
+      <div class="field">
+        <label>Brand text (top nav)</label>
+        <input data-bind="chrome.brand" type="text" value="${escapeHtml(state.chrome.brand||'')}" placeholder="Google Play">
+      </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #ddd">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">Top nav menu items (4 expected, mark one as active)</div>
+        ${state.chrome.topNavItems.map((it,i)=>`
+          <div class="item-card" style="padding:8px">
+            <div class="row" style="grid-template-columns:1fr auto auto;gap:8px;align-items:center">
+              <input type="text" data-topnav-bind="${i}.label" value="${escapeHtml(it.label||'')}" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px">
+              <label class="check" style="margin:0"><input type="radio" name="topnav-active" data-topnav-active="${i}" ${it.active?'checked':''}> Active</label>
+              <button class="btn btn-sm btn-danger" data-remove-topnav="${i}">×</button>
+            </div>
+          </div>
+        `).join("")}
+        <button class="btn btn-sm" id="add-topnav" style="margin-top:6px">+ Add item</button>
+      </div>
+      ${state.chrome.showBottomNav ? `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #ddd">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">Bottom nav items</div>
+          ${state.chrome.bottomNavItems.map((it,i)=>`
+            <div class="item-card" style="padding:8px">
+              <div class="row" style="grid-template-columns:64px 1fr auto auto;gap:8px;align-items:center">
+                <input type="text" data-bottomnav-bind="${i}.icon" value="${escapeHtml(it.icon||'')}" placeholder="🎮" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:16px;text-align:center">
+                <input type="text" data-bottomnav-bind="${i}.label" value="${escapeHtml(it.label||'')}" placeholder="Label" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px">
+                <label class="check" style="margin:0"><input type="radio" name="bottomnav-active" data-bottomnav-active="${i}" ${it.active?'checked':''}> Active</label>
+                <button class="btn btn-sm btn-danger" data-remove-bottomnav="${i}">×</button>
+              </div>
+            </div>
+          `).join("")}
+          <button class="btn btn-sm" id="add-bottomnav" style="margin-top:6px">+ Add item</button>
+        </div>
+      ` : ""}
+    </div>
+  </details>
+
+  <details class="section ai" open>
+    <summary>AI generation</summary>
+    <div class="section-body">
+      <p class="helper">AI 所需信息都在上方 APP basics 里。这里直接生成，生成后下面各模块仍可手动修改。</p>
+      <button class="btn btn-accent" id="btn-ai-generate" style="margin-top:6px">Generate content with AI</button>
+      <button class="btn btn-sm btn-ghost" id="btn-ai-show-prompt" style="margin-top:6px">View prompts + field map</button>
+      <div class="ai-status" id="ai-status"></div>
+    </div>
+  </details>
+
+  <details class="section" style="display:none">
+    <summary>App basics</summary>
+    <div class="section-body">
+      <div class="field">
+        <label>App icon (recommended 512×512 PNG)</label>
+        <div class="img-input">
+          <img class="img-thumb lg" id="icon-thumb" src="${state.app.icon || transparentPx()}" style="background:${state.app.iconBg}">
+          <input type="file" id="icon-file" accept="image/*" />
+          <button class="btn btn-sm btn-ghost" data-clear-img="icon">Clear</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>App name</label><input data-bind="app.name" type="text" value="${escapeHtml(state.app.name)}"></div>
+        <div class="field"><label>Developer</label><input data-bind="app.developer" type="text" value="${escapeHtml(state.app.developer)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Category</label><input data-bind="app.category" type="text" value="${escapeHtml(state.app.category)}"></div>
+        <div class="field"><label>Icon background (when no image)</label><input data-bind="app.iconBg" type="text" value="${escapeHtml(state.app.iconBg)}"></div>
+      </div>
+      <label class="check"><input type="checkbox" data-bind="app.containsAds" ${state.app.containsAds?"checked":""}> Contains ads</label>
+      <label class="check"><input type="checkbox" data-bind="app.inAppPurchases" ${state.app.inAppPurchases?"checked":""}> In-app purchases</label>
+      <label class="check"><input type="checkbox" data-bind="app.editorChoice" ${state.app.editorChoice?"checked":""}> Editor's Choice</label>
+    </div>
+  </details>
+
+  <details class="section" style="display:none">
+    <summary>Primary button skin</summary>
+    <div class="section-body">
+      <p class="helper" style="margin-top:0">This generator only controls the button's visual content and action key. The real install/link URL is resolved by another frontend/backend module after export.</p>
+      <div class="row">
+        <div class="field"><label>Button text</label><input data-bind="cta.installText" type="text" value="${escapeHtml(state.cta.installText)}"></div>
+        <div class="field"><label>Price (blank = free)</label><input data-bind="cta.price" type="text" value="${escapeHtml(state.cta.price)}"></div>
+      </div>
+      <div class="field">
+        <label>External action key</label>
+        <input data-bind="cta.actionKey" type="text" value="${escapeHtml(state.cta.actionKey||'install')}" placeholder="install">
+        <p class="helper">Exported buttons render with <code>data-lp-action</code>. External modules can listen for this key and return the final URL.</p>
+      </div>
+      <div style="margin-top:6px;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa">
+        <label class="check" style="margin:0 0 6px"><input type="checkbox" data-bind="cta.showProgressBar" ${state.cta.showProgressBar?'checked':''}>
+          <strong>Progress fill before external action</strong>
+        </label>
+        <p class="helper" style="margin:0 0 8px">When clicked, the button fills 0%→100% before handing control to the external link resolver.</p>
+        ${state.cta.showProgressBar ? `
+          <div class="row">
+            <div class="field"><label>Duration (ms)</label><input data-bind="cta.progressDuration" type="number" min="500" max="8000" step="100" value="${state.cta.progressDuration||1600}"></div>
+            <div class="field"><label>Progress label</label><input data-bind="cta.progressText" type="text" value="${escapeHtml(state.cta.progressText||'')}" placeholder="Downloading"></div>
+          </div>
+          <p class="helper" style="margin-bottom:0">Label is shown with the percentage during fill (e.g. "Downloading 45%"). Leave blank to keep the original button text.</p>
+        ` : ""}
+        </div>
+    </div>
+  </details>
+
+
+  <details class="section">
+    <summary>Stats</summary>
+    <div class="section-body">
+      <div class="row3">
+        <div class="field"><label>Rating</label><input data-bind="stats.rating" type="number" step="0.1" min="0" max="5" value="${state.stats.rating}"></div>
+        <div class="field"><label>Review count</label><input data-bind="stats.reviewCount" type="text" value="${escapeHtml(state.stats.reviewCount)}"></div>
+        <div class="field"><label>Downloads</label><input data-bind="stats.downloads" type="text" value="${escapeHtml(state.stats.downloads)}"></div>
+      </div>
+      <div class="row3">
+        <div class="field"><label>Downloads label</label><input data-bind="stats.downloadsLabel" type="text" value="${escapeHtml(state.stats.downloadsLabel)}"></div>
+        <div class="field"><label>Age rating</label><input data-bind="stats.ageRating" type="text" value="${escapeHtml(state.stats.ageRating)}"></div>
+        <div class="field"><label>Age rating label</label><input data-bind="stats.ageRatingLabel" type="text" value="${escapeHtml(state.stats.ageRatingLabel)}"></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>Screenshots (${state.screenshots.length})</summary>
+    <div class="section-body" id="screenshots-list">
+      <div style="display:none;padding:10px;border:1px solid #eee;border-radius:8px;background:#fafafa;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px">Carousel behavior</div>
+        <div class="row">
+          <label class="check"><input type="checkbox" data-bind="screenshotsConfig.showDots" ${state.screenshotsConfig.showDots?'checked':''}> Show pagination dots</label>
+          <label class="check"><input type="checkbox" data-bind="screenshotsConfig.autoplay" ${state.screenshotsConfig.autoplay?'checked':''}> Auto-advance slides</label>
+        </div>
+        ${state.screenshotsConfig.autoplay ? `
+          <div class="field" style="margin-top:6px"><label>Auto-advance interval (ms)</label><input data-bind="screenshotsConfig.autoplayInterval" type="number" min="1500" max="10000" step="500" value="${state.screenshotsConfig.autoplayInterval||4000}"></div>
+          <p class="helper" style="margin:6px 0 0">Touch swipe + scroll-snap are always on. Autoplay pauses while the user is interacting and resumes 5s after.</p>
+        ` : ""}
+      </div>
+      ${state.screenshots.map((s,i)=>`
+        <div class="item-card">
+          <div class="item-head">
+            <span class="ttl">Screenshot ${i+1}</span>
+            <button class="btn btn-sm btn-danger" data-remove-screenshot="${i}">Remove</button>
+          </div>
+          <div class="img-input">
+            <img class="img-thumb" src="${s.url || transparentPx()}" style="background:${s.color||'#eee'}">
+            <input type="file" accept="image/*" data-screenshot-file="${i}">
+            <button class="btn btn-sm btn-ghost" data-clear-screenshot="${i}">Clear</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div class="field"><label>Placeholder label</label><input type="text" data-screenshot-bind="${i}.label" value="${escapeHtml(s.label||'')}"></div>
+            <div class="field"><label>Placeholder color</label><input type="text" data-screenshot-bind="${i}.color" value="${escapeHtml(s.color||'#cccccc')}"></div>
+          </div>
+        </div>`).join("")}
+      <button class="btn btn-sm" id="add-screenshot" style="margin-top:8px">+ Add screenshot</button>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>About this app</summary>
+    <div class="section-body">
+      <div class="field"><label>Description</label><textarea data-bind="about.description" rows="8">${escapeHtml(state.about.description)}</textarea></div>
+      <div class="field"><label>Tags (comma separated)</label><input data-bind="about.tags" type="text" value="${escapeHtml(state.about.tags.join(", "))}" data-tag-array="1"></div>
+      <div class="field"><label>Updated date</label><input data-bind="about.updated" type="text" value="${escapeHtml(state.about.updated)}"></div>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>Data safety (${state.safety.length})</summary>
+    <div class="section-body" id="safety-list">
+      ${state.safety.map((it,i)=>`
+        <div class="item-card">
+          <div class="item-head">
+            <span class="ttl">Item ${i+1}</span>
+            <button class="btn btn-sm btn-danger" data-remove-safety="${i}">Remove</button>
+          </div>
+          <div class="row3">
+            <div class="field"><label>Icon (emoji)</label><input type="text" data-safety-bind="${i}.icon" value="${escapeHtml(it.icon)}"></div>
+            <div class="field" style="grid-column:span 2"><label>Title</label><input type="text" data-safety-bind="${i}.title" value="${escapeHtml(it.title)}"></div>
+          </div>
+          <div class="field"><label>Description</label><input type="text" data-safety-bind="${i}.desc" value="${escapeHtml(it.desc)}"></div>
+        </div>`).join("")}
+      <button class="btn btn-sm" id="add-safety" style="margin-top:8px">+ Add item</button>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>Rating distribution</summary>
+    <div class="section-body">
+      <div class="row3">
+        <div class="field"><label>5 ★ (%)</label><input data-bind="ratings.distribution.5" type="number" min="0" max="100" value="${state.ratings.distribution[5]}"></div>
+        <div class="field"><label>4 ★ (%)</label><input data-bind="ratings.distribution.4" type="number" min="0" max="100" value="${state.ratings.distribution[4]}"></div>
+        <div class="field"><label>3 ★ (%)</label><input data-bind="ratings.distribution.3" type="number" min="0" max="100" value="${state.ratings.distribution[3]}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>2 ★ (%)</label><input data-bind="ratings.distribution.2" type="number" min="0" max="100" value="${state.ratings.distribution[2]}"></div>
+        <div class="field"><label>1 ★ (%)</label><input data-bind="ratings.distribution.1" type="number" min="0" max="100" value="${state.ratings.distribution[1]}"></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>User reviews (${state.reviews.length})</summary>
+    <div class="section-body" id="reviews-list">
+      ${state.reviews.map((r,i)=>`
+        <div class="item-card">
+          <div class="item-head">
+            <span class="ttl">Review ${i+1}</span>
+            <button class="btn btn-sm btn-danger" data-remove-review="${i}">Remove</button>
+          </div>
+          <div class="row">
+            <div class="field"><label>Author</label><input type="text" data-review-bind="${i}.author" value="${escapeHtml(r.author)}"></div>
+            <div class="field"><label>Rating (1-5)</label><input type="number" min="1" max="5" data-review-bind="${i}.rating" value="${r.rating}"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>Date</label><input type="text" data-review-bind="${i}.date" value="${escapeHtml(r.date)}"></div>
+            <div class="field"><label>Version</label><input type="text" data-review-bind="${i}.version" value="${escapeHtml(r.version||'')}"></div>
+          </div>
+          <div class="field"><label>Text</label><textarea rows="3" data-review-bind="${i}.text">${escapeHtml(r.text)}</textarea></div>
+          <div class="field"><label>Helpful count</label><input type="number" min="0" data-review-bind="${i}.helpful" value="${r.helpful}"></div>
+        </div>`).join("")}
+      <button class="btn btn-sm" id="add-review" style="margin-top:8px">+ Add review</button>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>What's new</summary>
+    <div class="section-body">
+      <div class="field"><label>Changelog</label><textarea data-bind="whatsnew" rows="6">${escapeHtml(state.whatsnew)}</textarea></div>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>App details</summary>
+    <div class="section-body">
+      <div class="row">
+        <div class="field"><label>Version</label><input data-bind="info.version" type="text" value="${escapeHtml(state.info.version)}"></div>
+        <div class="field"><label>Updated</label><input data-bind="info.updated" type="text" value="${escapeHtml(state.info.updated)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Size</label><input data-bind="info.size" type="text" value="${escapeHtml(state.info.size)}"></div>
+        <div class="field"><label>Requires</label><input data-bind="info.requires" type="text" value="${escapeHtml(state.info.requires)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Content rating</label><input data-bind="info.contentRating" type="text" value="${escapeHtml(state.info.contentRating)}"></div>
+        <div class="field"><label>Permissions</label><input data-bind="info.permissions" type="text" value="${escapeHtml(state.info.permissions)}"></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>Application support / Developer contact (bottom of page)</summary>
+    <div class="section-body">
+      <p class="helper" style="margin-top:0">All fields shown in the "Application support" and "Developer info" sections at the bottom of the page.</p>
+      <div class="field">
+        <label>Support email</label>
+        <input data-bind="info.supportEmail" type="text" value="${escapeHtml(state.info.supportEmail||'')}" placeholder="support@example.com">
+      </div>
+      <div class="field">
+        <label>Privacy policy URL</label>
+        <input data-bind="info.privacyPolicy" type="text" value="${escapeHtml(state.info.privacyPolicy)}" placeholder="https://example.com/privacy">
+      </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #ddd">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">Developer info</div>
+        <div class="row">
+          <div class="field"><label>Developer name</label><input data-bind="info.developerName" type="text" value="${escapeHtml(state.info.developerName||state.app.developer)}" placeholder="Adela Mancilla Fernández"></div>
+          <div class="field"><label>Country / region</label><input data-bind="info.developerCountry" type="text" value="${escapeHtml(state.info.developerCountry||'')}" placeholder="México"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Email</label><input data-bind="info.developerEmail" type="text" value="${escapeHtml(state.info.developerEmail)}"></div>
+          <div class="field"><label>Website</label><input data-bind="info.developerWebsite" type="text" value="${escapeHtml(state.info.developerWebsite)}"></div>
+        </div>
+        <div class="field"><label>Physical address (optional)</label><input data-bind="info.developerAddress" type="text" value="${escapeHtml(state.info.developerAddress||'')}" placeholder="Av. Reforma 222, CDMX"></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>Localized UI labels</summary>
+    <div class="section-body">
+      <p class="helper" style="margin-top:0">These are the fixed Play Store-style labels that appear around operator content. AI can localize them for any target language, and operators can fine-tune them here.</p>
+      <div class="row">
+        <div class="field"><label>Reviews label</label><input data-bind="ui.reviewsLabel" type="text" value="${escapeHtml(state.ui.reviewsLabel)}"></div>
+        <div class="field"><label>Available label</label><input data-bind="ui.available" type="text" value="${escapeHtml(state.ui.available)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Contains ads</label><input data-bind="ui.containsAds" type="text" value="${escapeHtml(state.ui.containsAds)}"></div>
+        <div class="field"><label>In-app purchases</label><input data-bind="ui.inAppPurchases" type="text" value="${escapeHtml(state.ui.inAppPurchases)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Share</label><input data-bind="ui.share" type="text" value="${escapeHtml(state.ui.share)}"></div>
+        <div class="field"><label>Add to wishlist</label><input data-bind="ui.addToWishlist" type="text" value="${escapeHtml(state.ui.addToWishlist)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>About title</label><input data-bind="ui.aboutTitle" type="text" value="${escapeHtml(state.ui.aboutTitle)}"></div>
+        <div class="field"><label>Updated on</label><input data-bind="ui.updatedOn" type="text" value="${escapeHtml(state.ui.updatedOn)}"></div>
+      </div>
+      <div class="field"><label>Data safety intro</label><textarea data-bind="ui.dataSafetyIntro" rows="2">${escapeHtml(state.ui.dataSafetyIntro)}</textarea></div>
+      <div class="row">
+        <div class="field"><label>Data safety title</label><input data-bind="ui.dataSafetyTitle" type="text" value="${escapeHtml(state.ui.dataSafetyTitle)}"></div>
+        <div class="field"><label>Ratings title</label><input data-bind="ui.ratingsTitle" type="text" value="${escapeHtml(state.ui.ratingsTitle)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>What's new title</label><input data-bind="ui.whatsNewTitle" type="text" value="${escapeHtml(state.ui.whatsNewTitle)}"></div>
+        <div class="field"><label>App info title</label><input data-bind="ui.appInfoTitle" type="text" value="${escapeHtml(state.ui.appInfoTitle)}"></div>
+      </div>
+      <div class="row3">
+        <div class="field"><label>Version</label><input data-bind="ui.version" type="text" value="${escapeHtml(state.ui.version)}"></div>
+        <div class="field"><label>Updated</label><input data-bind="ui.updated" type="text" value="${escapeHtml(state.ui.updated)}"></div>
+        <div class="field"><label>Size</label><input data-bind="ui.size" type="text" value="${escapeHtml(state.ui.size)}"></div>
+      </div>
+      <div class="row3">
+        <div class="field"><label>Requires</label><input data-bind="ui.requires" type="text" value="${escapeHtml(state.ui.requires)}"></div>
+        <div class="field"><label>Content rating</label><input data-bind="ui.contentRating" type="text" value="${escapeHtml(state.ui.contentRating)}"></div>
+        <div class="field"><label>Permissions</label><input data-bind="ui.permissions" type="text" value="${escapeHtml(state.ui.permissions)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Support title</label><input data-bind="ui.supportTitle" type="text" value="${escapeHtml(state.ui.supportTitle)}"></div>
+        <div class="field"><label>Developer info title</label><input data-bind="ui.developerInfoTitle" type="text" value="${escapeHtml(state.ui.developerInfoTitle)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Support email</label><input data-bind="ui.supportEmail" type="text" value="${escapeHtml(state.ui.supportEmail)}"></div>
+        <div class="field"><label>Privacy policy</label><input data-bind="ui.privacyPolicy" type="text" value="${escapeHtml(state.ui.privacyPolicy)}"></div>
+      </div>
+      <div class="field"><label>Helpful suffix</label><input data-bind="ui.helpfulSuffix" type="text" value="${escapeHtml(state.ui.helpfulSuffix)}"></div>
+      <div class="field"><label>Footer note</label><input data-bind="ui.footerNote" type="text" value="${escapeHtml(state.ui.footerNote)}"></div>
+    </div>
+  </details>
+
+  <details class="section">
+    <summary>Image generation prompts</summary>
+    <div class="section-body">
+      <p class="helper" style="margin-top:0">OpenAI generates reusable prompts for the icon and each screenshot slot. Game cover / hero poster is operator-uploaded only.</p>
+      <div class="field"><label>Icon prompt</label><textarea data-bind="imagePrompts.icon" rows="3">${escapeHtml(state.imagePrompts.icon||'')}</textarea></div>
+      ${(state.imagePrompts.screenshots || []).map((p,i)=>`
+        <div class="item-card">
+          <div class="item-head"><span class="ttl">Screenshot prompt ${i+1}</span></div>
+          <div class="field"><label>Label</label><input type="text" data-image-prompt-bind="${i}.label" value="${escapeHtml(p.label||'')}"></div>
+          <div class="field"><label>Prompt</label><textarea rows="3" data-image-prompt-bind="${i}.prompt">${escapeHtml(p.prompt||'')}</textarea></div>
+        </div>
+      `).join("")}
+    </div>
+  </details>
+
+  <details class="section" style="display:none">
+    <summary>Theme</summary>
+    <div class="section-body">
+      <div class="field"><label>Primary color (button, links, stars)</label><input data-bind="theme.primary" type="text" value="${escapeHtml(state.theme.primary)}"></div>
+      <p class="helper">Any CSS color works: #01875f, #5b6cff, hsl(...) etc.</p>
+    </div>
+  </details>
+  `;
+  attachEditorEvents();
+}
+
+/* ===========================================================
+   6. Editor events
+   =========================================================== */
+function setByPath(obj, path, value){
+  const keys = path.split(".");
+  let cur = obj;
+  for (let i=0;i<keys.length-1;i++) cur = cur[keys[i]];
+  cur[keys[keys.length-1]] = value;
+}
+
+function attachEditorEvents(){
+  $$("[data-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const path = el.getAttribute("data-bind");
+      let v = el.type === "checkbox" ? el.checked
+            : el.type === "number"   ? Number(el.value)
+            : el.value;
+      if (el.dataset.tagArray){
+        v = el.value.split(",").map(s=>s.trim()).filter(Boolean);
+      }
+      setByPath(state, path, v);
+      if (path === "video.darkHeader" || path === "video.showDeviceHint" || path === "video.showLabel") renderEditor();
+      if (path === "cta.showProgressBar" || path === "screenshotsConfig.autoplay" || path === "screenshotsConfig.showDots") renderEditor();
+      if (path === "chrome.showTopNav" || path === "chrome.showBottomNav") renderEditor();
+      if (path === "ai.provider") {
+        setProviderDefaults(el.value);
+        renderEditor();
+      }
+      renderPreview();
+    });
+  });
+
+  const localeSelect = $("#locale-select");
+  if (localeSelect){
+    localeSelect.addEventListener("change", ()=>{
+      applyLanguagePreset(localeSelect.value);
+      renderEditor();
+      renderPreview();
+    });
+  }
+
+  // Icon
+  const iconFile = $("#icon-file");
+  if (iconFile){
+    iconFile.addEventListener("change", async e=>{
+      const f = e.target.files[0]; if (!f) return;
+      state.app.icon = await fileToDataURL(f);
+      renderEditor(); renderPreview();
+    });
+  }
+
+  // Screenshots
+  $$("[data-screenshot-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const [i,k] = el.getAttribute("data-screenshot-bind").split(".");
+      state.screenshots[+i][k] = el.value;
+      renderPreview();
+    });
+  });
+  $$("[data-screenshot-file]").forEach(el=>{
+    el.addEventListener("change", async e=>{
+      const i = +el.getAttribute("data-screenshot-file");
+      const f = e.target.files[0]; if (!f) return;
+      state.screenshots[i].url = await fileToDataURL(f);
+      renderEditor(); renderPreview();
+    });
+  });
+  $$("[data-clear-screenshot]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const i = +el.getAttribute("data-clear-screenshot");
+      state.screenshots[i].url = "";
+      renderEditor(); renderPreview();
+    });
+  });
+  $$("[data-remove-screenshot]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const idx = +el.getAttribute("data-remove-screenshot");
+      state.screenshots.splice(idx,1);
+      state.imagePrompts.screenshots.splice(idx,1);
+      renderEditor(); renderPreview();
+    });
+  });
+  if ($("#add-screenshot")) $("#add-screenshot").addEventListener("click", ()=>{
+    const palette = ["#1f2937","#7c3aed","#0ea5e9","#f97316","#dc2626","#16a34a","#ec4899"];
+    state.screenshots.push({url:"", color:palette[state.screenshots.length%palette.length], label:"Screenshot"});
+    state.imagePrompts.screenshots.push({label:"Screenshot", prompt:""});
+    renderEditor(); renderPreview();
+  });
+
+  // Image prompt fields
+  $$("[data-image-prompt-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const [i,k] = el.getAttribute("data-image-prompt-bind").split(".");
+      if (!state.imagePrompts.screenshots[+i]) state.imagePrompts.screenshots[+i] = {label:"", prompt:""};
+      state.imagePrompts.screenshots[+i][k] = el.value;
+    });
+  });
+
+  // Safety
+  $$("[data-safety-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const [i,k] = el.getAttribute("data-safety-bind").split(".");
+      state.safety[+i][k] = el.value;
+      renderPreview();
+    });
+  });
+  $$("[data-remove-safety]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      state.safety.splice(+el.getAttribute("data-remove-safety"),1);
+      renderEditor(); renderPreview();
+    });
+  });
+  if ($("#add-safety")) $("#add-safety").addEventListener("click", ()=>{
+    state.safety.push({icon:"🛡️", title:"New entry", desc:"Description"});
+    renderEditor(); renderPreview();
+  });
+
+  // Reviews
+  $$("[data-review-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const [i,k] = el.getAttribute("data-review-bind").split(".");
+      let v = (k==="rating"||k==="helpful") ? Number(el.value) : el.value;
+      state.reviews[+i][k] = v;
+      renderPreview();
+    });
+  });
+  $$("[data-remove-review]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      state.reviews.splice(+el.getAttribute("data-remove-review"),1);
+      renderEditor(); renderPreview();
+    });
+  });
+  if ($("#add-review")) $("#add-review").addEventListener("click", ()=>{
+    state.reviews.push({author:"New user", rating:5, date:"April 27, 2026", text:"Review text…", helpful:0, version:""});
+    renderEditor(); renderPreview();
+  });
+
+  // Clear icon
+  $$("[data-clear-img='icon']").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      state.app.icon=""; renderEditor(); renderPreview();
+    });
+  });
+
+  // Template picker
+  $$("[data-template-pick]").forEach(el=>{
+    el.addEventListener("change", ()=>{
+      state.template = el.value;
+      renderEditor(); renderPreview();
+    });
+  });
+
+  // Video poster upload
+  if ($("#video-file")) {
+    $("#video-file").addEventListener("change", async e=>{
+      const f = e.target.files[0]; if (!f) return;
+      state.video.url = await fileToDataURL(f);
+      renderEditor(); renderPreview();
+    });
+  }
+  if ($("#video-clear")) {
+    $("#video-clear").addEventListener("click", ()=>{
+      state.video.url = ""; renderEditor(); renderPreview();
+    });
+  }
+  if ($("#video-poster-file")) {
+    $("#video-poster-file").addEventListener("change", async e=>{
+      const f = e.target.files[0]; if (!f) return;
+      state.video.poster = await fileToDataURL(f);
+      renderEditor(); renderPreview();
+    });
+  }
+  if ($("#video-poster-clear")) {
+    $("#video-poster-clear").addEventListener("click", ()=>{
+      state.video.poster = ""; renderEditor(); renderPreview();
+    });
+  }
+
+  // ── Top nav items ──
+  $$("[data-topnav-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const [i,k] = el.getAttribute("data-topnav-bind").split(".");
+      state.chrome.topNavItems[+i][k] = el.value;
+      renderPreview();
+    });
+  });
+  $$("[data-topnav-active]").forEach(el=>{
+    el.addEventListener("change", ()=>{
+      const idx = +el.getAttribute("data-topnav-active");
+      state.chrome.topNavItems.forEach((it,i)=>{ it.active = (i === idx); });
+      renderPreview();
+    });
+  });
+  $$("[data-remove-topnav]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      state.chrome.topNavItems.splice(+el.getAttribute("data-remove-topnav"),1);
+      renderEditor(); renderPreview();
+    });
+  });
+  if ($("#add-topnav")) $("#add-topnav").addEventListener("click", ()=>{
+    state.chrome.topNavItems.push({label:"New", active:false});
+    renderEditor(); renderPreview();
+  });
+
+  // ── Bottom nav items ──
+  $$("[data-bottomnav-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const [i,k] = el.getAttribute("data-bottomnav-bind").split(".");
+      state.chrome.bottomNavItems[+i][k] = el.value;
+      renderPreview();
+    });
+  });
+  $$("[data-bottomnav-active]").forEach(el=>{
+    el.addEventListener("change", ()=>{
+      const idx = +el.getAttribute("data-bottomnav-active");
+      state.chrome.bottomNavItems.forEach((it,i)=>{ it.active = (i === idx); });
+      renderPreview();
+    });
+  });
+  $$("[data-remove-bottomnav]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      state.chrome.bottomNavItems.splice(+el.getAttribute("data-remove-bottomnav"),1);
+      renderEditor(); renderPreview();
+    });
+  });
+  if ($("#add-bottomnav")) $("#add-bottomnav").addEventListener("click", ()=>{
+    state.chrome.bottomNavItems.push({icon:"📦", label:"New", active:false});
+    renderEditor(); renderPreview();
+  });
+
+  // Floating contacts
+  $$("[data-contact-bind]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const [i,k] = el.getAttribute("data-contact-bind").split(".");
+      state.video.contacts[+i][k] = el.value;
+      if (k === "type") renderEditor();   // switching type may toggle the icon/bg fields
+      renderPreview();
+    });
+  });
+  $$("[data-remove-contact]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      state.video.contacts.splice(+el.getAttribute("data-remove-contact"), 1);
+      renderEditor(); renderPreview();
+    });
+  });
+  if ($("#add-contact")) $("#add-contact").addEventListener("click", ()=>{
+    const used = state.video.contacts.map(c=>c.type);
+    const next = !used.includes("telegram") ? "telegram"
+               : !used.includes("whatsapp") ? "whatsapp"
+               : "custom";
+    state.video.contacts.push({type: next, url: ""});
+    renderEditor(); renderPreview();
+  });
+
+  // AI buttons
+  if ($("#btn-ai-generate")) $("#btn-ai-generate").addEventListener("click", callAI);
+  if ($("#btn-ai-show-prompt")) $("#btn-ai-show-prompt").addEventListener("click", ()=>{
+    const s = $("#ai-status");
+    s.className = "ai-status busy";
+    s.textContent = buildPromptReference(state) + "\n\n" + buildImagePromptPlan(state) + "\n\nSYSTEM:\n" + AI_SYSTEM_PROMPT + "\n\nUSER:\n" + buildAIUserPrompt(state);
+  });
+}
+
+/* ===========================================================
+   7. Preview + standalone export
+   =========================================================== */
+function buildPreviewHTML(s, isStandalone=false){
+  const ui = { ...DEFAULT_STATE.ui, ...(s.ui || {}) };
+  const initials = s.app.name.trim().slice(0,2).toUpperCase();
+  const dist = s.ratings.distribution;
+  const maxBar = Math.max(dist[5],dist[4],dist[3],dist[2],dist[1],1);
+
+  const iconStyle = s.app.icon
+    ? `background-image:url('${s.app.icon}');background-size:cover;background-position:center;`
+    : `background:${s.app.iconBg};color:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:600;`;
+
+  // Install button: in editor we use a no-op, in standalone we wire up real behavior
+  const ctaLabel = `${escapeHtml(s.cta.installText)}${s.cta.price?` · ${escapeHtml(s.cta.price)}`:""}`;
+  const ctaDataAttrs = s.cta.showProgressBar
+    ? `data-progress="1" data-progress-ms="${s.cta.progressDuration||1600}" data-progress-text="${escapeHtml(s.cta.progressText||'')}"`
+    : "";
+  const actionAttr = `data-lp-action="${escapeHtml(s.cta.actionKey || 'install')}"`;
+  const installBtn = isStandalone
+    ? `<button class="ps-install" id="ps-install-btn" ${actionAttr} ${ctaDataAttrs}><span class="ps-install-progress"></span><span class="ps-install-text">${ctaLabel}</span></button>`
+    : `<button class="ps-install" onclick="event.preventDefault();return false;"><span class="ps-install-progress"></span><span class="ps-install-text">${ctaLabel}</span></button>`;
+
+  const hasHero = s.template === "video";
+  const dark = hasHero && s.video && s.video.darkHeader;
+  const accent = (s.video && s.video.accentColor) || s.theme.primary;
+
+  // Install button — variant depends on dark mode
+  const installBtnDark = isStandalone
+    ? `<button class="ps-install-fullwidth" id="ps-install-btn" ${actionAttr} ${ctaDataAttrs}><span class="ps-install-progress"></span><span class="ps-install-text">${ctaLabel}</span></button>`
+    : `<button class="ps-install-fullwidth" onclick="event.preventDefault();return false;"><span class="ps-install-progress"></span><span class="ps-install-text">${ctaLabel}</span></button>`;
+
+  // SVG icon set for secondary actions + device hint + contacts
+  const ICONS = {
+    share:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="11.49"/></svg>`,
+    bookmark: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`,
+    devices:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="12" rx="1"/><path d="M16 8h4l2 3v5h-6"/><circle cx="6" cy="20" r="1"/><circle cx="20" cy="20" r="1"/></svg>`,
+    telegram: `<svg viewBox="0 0 24 24"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" fill="#fff"/></svg>`,
+    whatsapp: `<svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" fill="#fff"/></svg>`
+  };
+
+  // Build contact stack (only shown in dark video mode, sits inline at right of app row)
+  const buildContacts = () => {
+    if (!dark || !s.video.contacts || !s.video.contacts.length) return "";
+    return `<div class="ps-contacts-stack">${
+      s.video.contacts.map(c => {
+        const bg = c.bg || (c.type === "telegram" ? "#229ED9" : c.type === "whatsapp" ? "#25D366" : "#444");
+        const icon = c.type === "telegram" ? ICONS.telegram
+                   : c.type === "whatsapp" ? ICONS.whatsapp
+                   : (c.icon ? `<span style="font-size:20px">${escapeHtml(c.icon)}</span>` : "•");
+        return `<a href="${escapeHtml(c.url||'#')}" target="_blank" rel="noopener" style="background:${escapeHtml(bg)}">${icon}</a>`;
+      }).join("")
+    }</div>`;
+  };
+
+
+  // ===================== DARK CARD VARIANT =====================
+  if (dark) {
+    return `
+    <style>
+      .ps .ps-rating-stars,.ps .ps-rating-bar > span,.ps .ps-review-stars,.ps .ps-section h2 a{color:${s.theme.primary}}
+      .ps .ps-rating-bar > span{background:${s.theme.primary}}
+      .ps-dark-card{--accent-color:${escapeHtml(accent)}}
+    </style>
+    ${buildTopNav(s)}
+    ${buildContacts()}
+    <div class="ps-dark-card">
+      ${buildHero(s)}
+      <div class="ps-header">
+        <div class="ps-app-row">
+          <div class="ps-icon" style="${iconStyle}">${s.app.icon?"":escapeHtml(initials)}</div>
+          <div class="ps-app-info">
+            <h1 class="ps-app-name">${escapeHtml(s.app.name)}</h1>
+            <div class="ps-developer">${escapeHtml(s.app.developer)}</div>
+            <div class="ps-meta">
+              ${s.app.inAppPurchases?`<span>${escapeHtml(ui.inAppPurchases)}</span>`:''}
+              ${s.app.containsAds?`<span>${escapeHtml(ui.containsAds)}</span>`:''}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ps-stats">
+        <div class="ps-stat">
+          <div class="ps-stat-val">${escapeHtml(String(s.stats.rating))} <span>★</span></div>
+          <div class="ps-stat-sub">${escapeHtml(s.stats.reviewCount)} ${escapeHtml(ui.reviewsLabel)}</div>
+        </div>
+        <div class="ps-stat">
+          <div class="ps-stat-val">${escapeHtml(s.stats.downloads)}</div>
+          <div class="ps-stat-sub">${escapeHtml(s.stats.downloadsLabel)}</div>
+        </div>
+        <div class="ps-stat">
+          <div class="ps-stat-val" data-age="1">${escapeHtml(s.stats.ageRating)}</div>
+          <div class="ps-stat-sub">${escapeHtml(s.stats.ageRatingLabel)}</div>
+        </div>
+      </div>
+
+      <div class="ps-actions">
+        ${installBtnDark}
+      </div>
+
+      <div class="ps-secondary">
+        <a href="#"><span class="ps-sec-icon">${ICONS.share}</span> ${escapeHtml(ui.share)}</a>
+        <a href="#"><span class="ps-sec-icon">${ICONS.bookmark}</span> ${escapeHtml(ui.addToWishlist)}</a>
+      </div>
+
+      ${s.video.showDeviceHint ? `
+        <div class="ps-device-hint">
+          ${ICONS.devices}
+          <span>${escapeHtml(s.video.deviceHintText || "")}</span>
+        </div>` : ""}
+    </div>
+
+    ${ /* Continue with the standard light sections below */ "" }
+  `+buildLightBody(s, accent);
+  }
+
+  // ===================== STANDARD (LIGHT) VARIANT =====================
+  return `
+  <style>.ps .ps-install,.ps .ps-rating-stars,.ps .ps-developer,.ps .ps-rating-bar > span,.ps .ps-review-stars,.ps .ps-section h2 a{color:${s.theme.primary}}.ps .ps-install{color:#fff;background:${s.theme.primary}}.ps .ps-rating-bar > span{background:${s.theme.primary}}</style>
+  ${buildTopNav(s)}
+  ${ hasHero ? buildHero(s) : "" }
+  <div class="ps-header${hasHero?' has-hero':''}">
+    <div class="ps-app-row">
+      <div class="ps-icon${hasHero?' overlap':''}" style="${iconStyle}">${s.app.icon?"":escapeHtml(initials)}</div>
+      <div class="ps-app-info">
+        <h1 class="ps-app-name">${escapeHtml(s.app.name)}</h1>
+        <div class="ps-developer">${escapeHtml(s.app.developer)}</div>
+        <div class="ps-meta">
+          ${s.app.containsAds?`<span>${escapeHtml(ui.containsAds)}</span>`:''}
+          ${s.app.inAppPurchases?`<span>${escapeHtml(ui.inAppPurchases)}</span>`:''}
+          ${s.app.editorChoice?`<span>${escapeHtml(ui.editorsChoice)}</span>`:''}
+          ${s.app.category?`<span>${escapeHtml(s.app.category)}</span>`:''}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ps-stats">
+    <div class="ps-stat">
+      <div class="ps-stat-val">${escapeHtml(String(s.stats.rating))} <span style="color:${s.theme.primary}">★</span></div>
+      <div class="ps-stat-sub">${escapeHtml(s.stats.reviewCount)} ${escapeHtml(ui.reviewsLabel)}</div>
+    </div>
+    <div class="ps-stat">
+      <div class="ps-stat-val">${escapeHtml(s.stats.downloads)}</div>
+      <div class="ps-stat-sub">${escapeHtml(s.stats.downloadsLabel)}</div>
+    </div>
+    <div class="ps-stat">
+      <div class="ps-stat-val" style="border:1px solid #5f6368;border-radius:4px;padding:1px 6px;font-size:12px">${escapeHtml(s.stats.ageRating)}</div>
+      <div class="ps-stat-sub">${escapeHtml(s.stats.ageRatingLabel)}</div>
+    </div>
+    <div class="ps-stat">
+      <div class="ps-stat-val">⬇️</div>
+      <div class="ps-stat-sub">${escapeHtml(ui.available)}</div>
+    </div>
+  </div>
+
+  <div class="ps-actions">
+    ${installBtn}
+    <button class="ps-iconbtn" title="${escapeHtml(ui.addToWishlist)}">+</button>
+    <button class="ps-iconbtn" title="${escapeHtml(ui.share)}">↗</button>
+  </div>
+  ` + buildLightBody(s);
+}
+
+function buildLightBody(s){
+  const ui = { ...DEFAULT_STATE.ui, ...(s.ui || {}) };
+  const dist = s.ratings.distribution;
+  const maxBar = Math.max(dist[5],dist[4],dist[3],dist[2],dist[1],1);
+  const carousel = s.screenshotsConfig || { showDots: true, autoplay: true, autoplayInterval: 4000 };
+  return `
+  <div class="ps-screenshots-wrap">
+    <div class="ps-screenshots" data-autoplay="${carousel.autoplay?1:0}" data-autoplay-ms="${carousel.autoplayInterval||4000}">
+      ${s.screenshots.map(sc=>{
+        if (sc.url) return `<img class="ps-screenshot" src="${sc.url}" alt="${escapeHtml(sc.label||'')}">`;
+        return `<div class="ps-screenshot" style="width:160px;background:${sc.color||'#ccc'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:500;font-size:14px">${escapeHtml(sc.label||'Screenshot')}</div>`;
+      }).join("")}
+    </div>
+    ${carousel.showDots && s.screenshots.length > 1 ? `<div class="ps-dots"></div>` : ""}
+  </div>
+
+  <section class="ps-section">
+    <h2>${escapeHtml(ui.aboutTitle)} <span class="arrow">›</span></h2>
+    <div class="ps-about">${nl2br(s.about.description)}</div>
+    <div class="ps-tags">${s.about.tags.map(t=>`<span class="ps-tag">${escapeHtml(t)}</span>`).join("")}</div>
+    <div class="ps-updated">${escapeHtml(ui.updatedOn)}: ${escapeHtml(s.about.updated)}</div>
+  </section>
+
+  ${s.safety.length?`
+  <section class="ps-section">
+    <h2>${escapeHtml(ui.dataSafetyTitle)} <span class="arrow">›</span></h2>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 10px">${escapeHtml(ui.dataSafetyIntro)}</p>
+    <div class="ps-safety-card">
+      ${s.safety.map(it=>`
+        <div class="ps-safety-item">
+          <div class="ps-safety-icon">${escapeHtml(it.icon)}</div>
+          <div class="ps-safety-text">
+            <p class="ps-safety-title">${escapeHtml(it.title)}</p>
+            <p class="ps-safety-desc">${escapeHtml(it.desc)}</p>
+          </div>
+        </div>`).join("")}
+    </div>
+  </section>`:""}
+
+  <section class="ps-section">
+    <h2>${escapeHtml(ui.ratingsTitle)} <span class="arrow">›</span></h2>
+    <div class="ps-rating-overview">
+      <div>
+        <div class="ps-rating-big">${escapeHtml(String(s.stats.rating))}</div>
+        <div class="ps-rating-stars">${stars(s.stats.rating)}</div>
+        <div class="ps-rating-count">${escapeHtml(s.stats.reviewCount)} ${escapeHtml(ui.reviewsLabel)}</div>
+      </div>
+      <div class="ps-rating-bars">
+        ${[5,4,3,2,1].map(n=>`
+          <div class="ps-rating-num">${n}</div>
+          <div class="ps-rating-bar"><span style="width:${(dist[n]/maxBar*100).toFixed(0)}%"></span></div>
+        `).join("")}
+      </div>
+    </div>
+    ${s.reviews.map(r=>`
+      <div class="ps-review">
+        <div class="ps-review-head">
+          <div class="ps-review-avatar">${escapeHtml(r.author.slice(0,1))}</div>
+          <div>
+            <div class="ps-review-author">${escapeHtml(r.author)}</div>
+            <div class="ps-review-meta">
+              <span class="ps-review-stars">${stars(r.rating)}</span>
+              <span>${escapeHtml(r.date)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="ps-review-body">${nl2br(r.text)}</div>
+        <div class="ps-review-helpful">${r.helpful} ${escapeHtml(ui.helpfulSuffix)}${r.version?` · ${escapeHtml(r.version)}`:""}</div>
+      </div>
+    `).join("")}
+  </section>
+
+  ${s.whatsnew?`
+  <section class="ps-section">
+    <h2>${escapeHtml(ui.whatsNewTitle)} <span class="arrow">›</span></h2>
+    <div class="ps-whatsnew">${nl2br(s.whatsnew)}</div>
+  </section>`:""}
+
+  <section class="ps-section">
+    <h2>${escapeHtml(ui.appInfoTitle)}</h2>
+    <div class="ps-info-grid">
+      <div class="ps-info-item"><div class="k">${escapeHtml(ui.version)}</div><div class="v">${escapeHtml(s.info.version)}</div></div>
+      <div class="ps-info-item"><div class="k">${escapeHtml(ui.updated)}</div><div class="v">${escapeHtml(s.info.updated)}</div></div>
+      <div class="ps-info-item"><div class="k">${escapeHtml(ui.size)}</div><div class="v">${escapeHtml(s.info.size)}</div></div>
+      <div class="ps-info-item"><div class="k">${escapeHtml(ui.requires)}</div><div class="v">${escapeHtml(s.info.requires)}</div></div>
+      <div class="ps-info-item"><div class="k">${escapeHtml(ui.contentRating)}</div><div class="v">${escapeHtml(s.info.contentRating)}</div></div>
+      <div class="ps-info-item"><div class="k">${escapeHtml(ui.permissions)}</div><div class="v">${escapeHtml(s.info.permissions)}</div></div>
+    </div>
+  </section>
+
+  <section class="ps-section">
+    <h2>${escapeHtml(ui.supportTitle)}</h2>
+    <div class="ps-info-grid">
+      ${s.info.supportEmail ? `
+        <div class="ps-info-item" style="grid-column:span 2">
+          <div class="k">${escapeHtml(ui.supportEmail)}</div>
+          <div class="v"><a href="mailto:${escapeHtml(s.info.supportEmail)}" style="color:${s.theme.primary};text-decoration:none">${escapeHtml(s.info.supportEmail)}</a></div>
+        </div>` : ''}
+      <div class="ps-info-item" style="grid-column:span 2">
+        <div class="k">${escapeHtml(ui.privacyPolicy)}</div>
+        <div class="v"><a href="${escapeHtml(s.info.privacyPolicy)}" target="_blank" style="color:${s.theme.primary};text-decoration:none">${escapeHtml(s.info.privacyPolicy)}</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ps-section">
+    <h2>${escapeHtml(ui.developerInfoTitle)}</h2>
+    <div style="font-size:13px;color:var(--text);line-height:1.8">
+      ${s.info.developerName ? `<div style="font-weight:500">${escapeHtml(s.info.developerName)}</div>` : ''}
+      ${s.info.developerEmail ? `<div><a href="mailto:${escapeHtml(s.info.developerEmail)}" style="color:${s.theme.primary};text-decoration:none">${escapeHtml(s.info.developerEmail)}</a></div>` : ''}
+      ${s.info.developerWebsite ? `<div><a href="${escapeHtml(s.info.developerWebsite)}" target="_blank" style="color:${s.theme.primary};text-decoration:none">${escapeHtml(s.info.developerWebsite)}</a></div>` : ''}
+      ${s.info.developerAddress ? `<div style="color:var(--muted)">${escapeHtml(s.info.developerAddress)}</div>` : ''}
+      ${s.info.developerCountry ? `<div style="color:var(--muted)">${escapeHtml(s.info.developerCountry)}</div>` : ''}
+    </div>
+  </section>
+
+  <footer class="ps-footer">
+    © ${new Date().getFullYear()} ${escapeHtml(s.app.developer)} · ${escapeHtml(ui.footerNote)}
+  </footer>
+  ${buildBottomNav(s)}
+  `;
+}
+
+function getYouTubeId(url){
+  if (!url) return null;
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  return m ? m[1] : null;
+}
+
+// Multi-color Google Play-style triangle logo
+const PS_PLAY_LOGO_SVG = `<svg class="ps-topnav-logo" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="psPlayG1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#00d8e1"/><stop offset="100%" stop-color="#00d4f3"/></linearGradient>
+    <linearGradient id="psPlayG2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffce00"/><stop offset="100%" stop-color="#ff9100"/></linearGradient>
+    <linearGradient id="psPlayG3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ff3a44"/><stop offset="100%" stop-color="#c31162"/></linearGradient>
+    <linearGradient id="psPlayG4" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00f076"/><stop offset="100%" stop-color="#00b962"/></linearGradient>
+  </defs>
+  <path fill="url(#psPlayG4)" d="M3.6 1.6c-.4.3-.6.8-.6 1.4v18c0 .6.2 1.1.6 1.4L13.7 12 3.6 1.6z"/>
+  <path fill="url(#psPlayG2)" d="M17.5 8.2L13.7 12l3.8 3.8 4.2-2.4c1-.6 1-2.2 0-2.8l-4.2-2.4z"/>
+  <path fill="url(#psPlayG3)" d="M3.6 22.4c.5.4 1.2.4 1.9 0l11.9-6.7L13.7 12 3.6 22.4z"/>
+  <path fill="url(#psPlayG1)" d="M5.5 1.6c-.7-.4-1.4-.4-1.9 0L13.7 12l3.8-3.8L5.5 1.6z"/>
+</svg>`;
+
+function buildTopNav(s){
+  const c = (s.chrome || {});
+  if (!c.showTopNav) return "";
+  const items = (c.topNavItems || []).map(it =>
+    `<span class="${it.active?'active':''}">${escapeHtml(it.label)}</span>`
+  ).join("");
+  return `<nav class="ps-topnav">
+    <div class="ps-topnav-left">
+      <div class="ps-topnav-brand">
+        ${PS_PLAY_LOGO_SVG}
+        <span class="ps-topnav-brand-text">${escapeHtml(c.brand||"Google Play")}</span>
+      </div>
+      <div class="ps-topnav-menu">${items}</div>
+    </div>
+    <div class="ps-topnav-right">
+      <span class="ps-topnav-icon" title="Search">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <span class="ps-topnav-icon" title="More">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+      </span>
+    </div>
+  </nav>`;
+}
+
+function buildBottomNav(s){
+  const c = (s.chrome || {});
+  if (!c.showBottomNav) return "";
+  const items = (c.bottomNavItems || []).map(it =>
+    `<div class="ps-bottomnav-item ${it.active?'active':''}">
+      <span class="ps-bottomnav-icon">${escapeHtml(it.icon||'•')}</span>
+      <span>${escapeHtml(it.label)}</span>
+    </div>`
+  ).join("");
+  return `<nav class="ps-bottomnav">${items}</nav>`;
+}
+
+function buildHero(s){
+  const v = s.video || {};
+  let media;
+
+  if (v.url && (/^data:video\//i.test(v.url) || /\.(mp4|webm|ogg|mov)(\?|$)/i.test(v.url))){
+    // Uploaded/direct video file — ALWAYS muted (forced)
+    const attrs = [
+      v.autoplay ? "autoplay" : "",
+      "muted",                 // FORCED muted
+      v.loop     ? "loop"     : "",
+      "playsinline",
+      "preload=\"auto\"",
+      v.poster   ? `poster="${escapeHtml(v.poster)}"` : ""
+    ].filter(Boolean).join(" ");
+    media = `<video ${attrs} src="${escapeHtml(v.url)}"></video>`;
+  } else if (v.poster){
+    // Fallback: just the poster as a static image
+    media = `<img src="${escapeHtml(v.poster)}" alt="">`;
+  } else {
+    media = `<div class="ps-video-placeholder">Upload a hero video or poster image</div>`;
+  }
+
+  return `<div class="ps-hero">
+    ${media}
+    ${v.showLabel && v.label ? `<div class="ps-video-label">${escapeHtml(v.label)}</div>` : ""}
+  </div>`;
+}
+
+// Self-contained video lightbox script — same source is embedded into
+// the standalone HTML export, so the modal works there too.
+const VIDEO_LIGHTBOX_JS = `(function(){
+  function openModal(thumb){
+    var ytId    = thumb.getAttribute('data-yt-id') || '';
+    var url     = thumb.getAttribute('data-video-url') || '';
+    var auto    = thumb.getAttribute('data-autoplay') === '1';
+    var muted   = thumb.getAttribute('data-muted') === '1';
+    var loop    = thumb.getAttribute('data-loop') === '1';
+    var ctrls   = thumb.getAttribute('data-controls') === '1';
+
+    var player;
+    if (ytId){
+      var p = new URLSearchParams();
+      if (auto)  p.set('autoplay','1');
+      if (muted) p.set('mute','1');
+      if (loop){ p.set('loop','1'); p.set('playlist', ytId); }
+      if (!ctrls) p.set('controls','0');
+      p.set('rel','0'); p.set('playsinline','1');
+      var iframe = document.createElement('iframe');
+      iframe.src = 'https://www.youtube.com/embed/' + ytId + '?' + p.toString();
+      iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+      iframe.allowFullscreen = true;
+      player = iframe;
+    } else if (url && /\\.(mp4|webm|ogg|mov)(\\?|$)/i.test(url)){
+      var v = document.createElement('video');
+      v.src = url;
+      if (ctrls) v.controls = true;
+      if (auto)  v.autoplay = true;
+      if (muted) v.muted = true;
+      if (loop)  v.loop = true;
+      v.playsInline = true;
+      player = v;
+    } else {
+      return;
+    }
+
+    var modal = document.createElement('div');
+    modal.className = 'ps-video-modal';
+    modal.innerHTML = '<div class="ps-video-modal-inner"><button class="ps-video-modal-close" aria-label="Close">×</button></div>';
+    modal.querySelector('.ps-video-modal-inner').appendChild(player);
+
+    function close(){
+      if (modal.parentNode) modal.parentNode.removeChild(modal);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e){ if (e.key === 'Escape') close(); }
+
+    modal.addEventListener('click', function(e){
+      if (e.target === modal) close();
+    });
+    modal.querySelector('.ps-video-modal-close').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(modal);
+  }
+
+  document.addEventListener('click', function(e){
+    var thumb = e.target.closest && e.target.closest('[data-ps-video="1"]');
+    if (thumb) openModal(thumb);
+  });
+})();`;
+
+function initVideoLightbox(){
+  // Re-attach in the editor preview each render
+  if (window.__lightboxInit) return;
+  window.__lightboxInit = true;
+  // eslint-disable-next-line no-eval
+  (0,eval)(VIDEO_LIGHTBOX_JS);
+}
+
+// ===========================================================
+// Screenshots carousel — pagination dots, autoplay, scroll-snap.
+// Re-callable: cleans up previous instance before re-initializing.
+// ===========================================================
+const CAROUSEL_JS = `(function(){
+  if (window.__psCarousel && window.__psCarousel.cleanup) window.__psCarousel.cleanup();
+
+  function init(){
+    var wrap  = document.querySelector('.ps-screenshots');
+    var dots  = document.querySelector('.ps-dots');
+    if (!wrap) return;
+    var slides = Array.prototype.slice.call(wrap.querySelectorAll('.ps-screenshot'));
+    if (slides.length < 2){ if (dots) dots.style.display='none'; return; }
+
+    var autoplay   = wrap.getAttribute('data-autoplay') === '1';
+    var autoplayMs = parseInt(wrap.getAttribute('data-autoplay-ms') || '4000', 10);
+    var activeIdx  = 0;
+    var timer      = null;
+    var paused     = false;
+
+    if (dots){
+      dots.innerHTML = slides.map(function(_, i){
+        return '<span class="ps-dot' + (i===0?' active':'') + '" data-idx="' + i + '"></span>';
+      }).join('');
+      dots.addEventListener('click', function(e){
+        var idx = e.target && e.target.getAttribute('data-idx');
+        if (idx == null) return;
+        scrollToIdx(parseInt(idx,10));
+        bumpAutoplay();
+      });
+    }
+
+    function scrollToIdx(i){
+      var s = slides[i]; if (!s) return;
+      var left = s.offsetLeft - (wrap.clientWidth - s.clientWidth) / 2;
+      wrap.scrollTo({left: Math.max(0,left), behavior:'smooth'});
+    }
+
+    function updateActive(){
+      var center = wrap.scrollLeft + wrap.clientWidth/2;
+      var nearest = 0, minDist = Infinity;
+      for (var i=0;i<slides.length;i++){
+        var s = slides[i];
+        var c = s.offsetLeft + s.clientWidth/2;
+        var d = Math.abs(center - c);
+        if (d < minDist){ minDist = d; nearest = i; }
+      }
+      if (nearest !== activeIdx){
+        activeIdx = nearest;
+        if (dots){
+          var ds = dots.querySelectorAll('.ps-dot');
+          for (var j=0;j<ds.length;j++) ds[j].classList.toggle('active', j===nearest);
+        }
+      }
+    }
+
+    var scrollDeb;
+    wrap.addEventListener('scroll', function(){
+      clearTimeout(scrollDeb);
+      scrollDeb = setTimeout(updateActive, 60);
+    }, {passive:true});
+
+    function next(){
+      if (paused) return;
+      var nextIdx = (activeIdx + 1) % slides.length;
+      scrollToIdx(nextIdx);
+    }
+    function start(){ if (autoplay){ stop(); timer = setInterval(next, autoplayMs); } }
+    function stop(){ if (timer){ clearInterval(timer); timer = null; } }
+    function bumpAutoplay(){ stop(); setTimeout(start, 5000); }
+
+    // Pause autoplay during user interaction
+    wrap.addEventListener('touchstart',  function(){ paused = true;  stop(); }, {passive:true});
+    wrap.addEventListener('touchend',    function(){ paused = false; bumpAutoplay(); }, {passive:true});
+    wrap.addEventListener('mousedown',   function(){ paused = true;  stop(); });
+    wrap.addEventListener('mouseup',     function(){ paused = false; bumpAutoplay(); });
+    wrap.addEventListener('mouseenter',  function(){ stop(); });
+    wrap.addEventListener('mouseleave',  function(){ start(); });
+
+    start();
+
+    window.__psCarousel = {
+      cleanup: function(){ stop(); }
+    };
+  }
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    setTimeout(init, 30);  // wait for layout
+  }
+})();`;
+
+function initCarousel(){
+  // eslint-disable-next-line no-eval
+  (0,eval)(CAROUSEL_JS);
+}
+
+// ===========================================================
+// Install button progress animation — runs 0%→100% then redirects.
+// The actual redirect URL/logic comes from the install script that runs after.
+// We expose `window.__psInstallProgress(btn, ms, label, done)`.
+// ===========================================================
+const INSTALL_PROGRESS_JS = `(function(){
+  window.__psInstallProgress = function(btn, ms, label, done){
+    if (!btn || btn.dataset.installing === '1'){ if (done) done(); return; }
+    btn.dataset.installing = '1';
+    var fill = btn.querySelector('.ps-install-progress');
+    var text = btn.querySelector('.ps-install-text');
+    var original = text ? text.textContent : '';
+    var start = performance.now();
+    function tick(now){
+      var t = Math.min(1, (now - start) / ms);
+      var pct = Math.floor(t * 100);
+      if (fill) fill.style.width = pct + '%';
+      if (text) text.textContent = (label ? label + ' ' : original + ' ') + pct + '%';
+      if (t < 1){ requestAnimationFrame(tick); }
+      else { if (done) done(); }
+    }
+    requestAnimationFrame(tick);
+  };
+})();`;
+
+function renderPreview(){
+  $("#preview").innerHTML = buildPreviewHTML(state, false);
+  updateExportBadge();
+  initVideoLightbox();
+  initCarousel();
+}
+
+/* ===========================================================
+   8. Pages CMS — list / save / load / delete
+   ===========================================================
+   Pages are stored in localStorage under PageStore.KEY. Each page is:
+     { id, name, state, html, updatedAt, createdAt }
+   To wire this UI into a real backend later, swap PageStore methods
+   with fetch() calls — interface is intentionally minimal.
+   =========================================================== */
+const PageStore = {
+  KEY: "ps_generator_pages_v1",
+  list(){
+    try { return JSON.parse(localStorage.getItem(this.KEY) || "[]"); }
+    catch(_){ return []; }
+  },
+  _save(arr){ localStorage.setItem(this.KEY, JSON.stringify(arr)); },
+  get(id){ return this.list().find(p => p.id === id) || null; },
+  create(page){
+    const all = this.list();
+    page.id = "pg_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    page.createdAt = new Date().toISOString();
+    page.updatedAt = page.createdAt;
+    all.unshift(page);
+    this._save(all);
+    return page;
+  },
+  update(id, partial){
+    const all = this.list();
+    const i = all.findIndex(p => p.id === id);
+    if (i < 0) return null;
+    all[i] = { ...all[i], ...partial, updatedAt: new Date().toISOString() };
+    this._save(all);
+    return all[i];
+  },
+  delete(id){
+    this._save(this.list().filter(p => p.id !== id));
+  },
+  duplicate(id){
+    const src = this.get(id); if (!src) return null;
+    return this.create({
+      name: src.name + " (copy)",
+      state: JSON.parse(JSON.stringify(src.state)),
+      html:  src.html
+    });
+  }
+};
+
+let currentView    = "list";     // "list" | "editor"
+let currentPageId  = null;       // null when creating new
+let currentPageName = "";
+
+function showView(view){
+  currentView = view;
+  $("#topbar").innerHTML = renderTopbar();
+  $("#pages-view").style.display   = view === "list"   ? "" : "none";
+  $("#editor-view").style.display  = view === "editor" ? "grid" : "none";
+  if (view === "list")  renderPagesList();
+  if (view === "editor"){ renderEditor(); renderPreview(); }
+  attachTopbarEvents();
+}
+
+function renderTopbar(){
+  if (currentView === "list"){
+    return `
+      <h1>📄 Landing Page Templates</h1>
+      <span class="badge">${PageStore.list().length} pages</span>
+      <div style="flex:1"></div>
+      <a class="btn" href="./">Tool directory</a>
+      <button class="btn btn-primary" id="btn-new-page">+ New page</button>
+    `;
+  }
+  // editor view
+  return `
+    <button class="btn" id="btn-back">← Pages</button>
+    <input class="page-name-input" id="page-name-input" value="${escapeHtml(currentPageName)}" placeholder="Untitled page">
+    <span class="badge" id="page-id-badge" style="font-family:ui-monospace,SFMono-Regular,Consolas,monospace">${currentPageId || "unsaved"}</span>
+    <div style="flex:1"></div>
+    <span id="export-mode-badge" style="font-size:11px;color:var(--muted)"></span>
+    <a class="btn" href="./">Tool directory</a>
+    <button class="btn" id="btn-reset">Reset</button>
+    <button class="btn btn-primary" id="btn-save">💾 Save${currentPageId ? "" : " as new"}</button>
+  `;
+}
+
+function attachTopbarEvents(){
+  // List view
+  if ($("#btn-new-page")){
+    $("#btn-new-page").addEventListener("click", openNewPage);
+  }
+  // Editor view
+  if ($("#btn-back")){
+    $("#btn-back").addEventListener("click", ()=>{
+      if (hasUnsavedChanges() && !confirm("You may have unsaved changes. Leave anyway?")) return;
+      showView("list");
+    });
+  }
+  if ($("#page-name-input")){
+    $("#page-name-input").addEventListener("input", e=>{
+      currentPageName = e.target.value;
+    });
+  }
+  if ($("#btn-reset")){
+    $("#btn-reset").addEventListener("click", ()=>{
+      if (!confirm("Reset to the default page content? All current edits will be lost.")) return;
+      const apiKey = state.ai.apiKey;
+      state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      state.ai.apiKey = apiKey;
+      renderEditor(); renderPreview();
+      showToast("Reset to defaults");
+    });
+  }
+  if ($("#btn-save")){
+    $("#btn-save").addEventListener("click", savePage);
+  }
+}
+
+function openNewPage(){
+  state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  currentPageId = null;
+  currentPageName = "Untitled page";
+  showView("editor");
+}
+
+function loadPage(id){
+  const p = PageStore.get(id);
+  if (!p){ showToast("Page not found"); return; }
+  // Merge with DEFAULT_STATE to fill any missing new fields
+  state = deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), p.state || {});
+  currentPageId = p.id;
+  currentPageName = p.name || "Untitled";
+  showView("editor");
+}
+
+function savePage(){
+  const cleanState = JSON.parse(JSON.stringify(state));
+  if (cleanState.ai) delete cleanState.ai.apiKey;   // never persist API key
+  const html = buildStandaloneHTML(state);
+  const name = (currentPageName || "Untitled page").trim();
+
+  if (currentPageId){
+    PageStore.update(currentPageId, { name, state: cleanState, html });
+    showToast("Saved");
+  } else {
+    const created = PageStore.create({ name, state: cleanState, html });
+    currentPageId = created.id;
+    showToast("Page created");
+  }
+  // Refresh badge to show new id
+  $("#topbar").innerHTML = renderTopbar();
+  attachTopbarEvents();
+  updateExportBadge();
+}
+
+function hasUnsavedChanges(){
+  if (!currentPageId) return true;  // new page = always unsaved
+  const saved = PageStore.get(currentPageId);
+  if (!saved) return true;
+  const cur = JSON.parse(JSON.stringify(state));
+  if (cur.ai) delete cur.ai.apiKey;
+  return JSON.stringify(saved.state) !== JSON.stringify(cur);
+}
+
+function renderPagesList(){
+  const all = PageStore.list();
+  const search = ($("#pages-search")?.value || "").toLowerCase();
+  const filtered = search
+    ? all.filter(p => (p.name || "").toLowerCase().includes(search) || (p.id || "").toLowerCase().includes(search))
+    : all;
+
+  $("#pages-count").textContent = all.length === 0 ? "" : `${filtered.length} of ${all.length}`;
+
+  const container = $("#pages-list-container");
+  if (all.length === 0){
+    container.innerHTML = `
+      <div class="pages-empty">
+        <h2>No pages yet</h2>
+        <p>Click <strong>+ New page</strong> in the top right to create your first landing page template.</p>
+        <p style="font-size:12px;margin-top:18px">Saved pages are stored in this browser (localStorage).<br>To wire up to your BO backend, swap the <code>PageStore</code> methods in the source.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `<div class="pages-grid">${filtered.map(p=>{
+    const tplMeta  = TEMPLATE_META[p.state?.template] || TEMPLATE_META.screenshots;
+    const tplIcon  = tplMeta.icon;
+    const tplLabel = tplMeta.label;
+    const updated  = formatRelative(p.updatedAt);
+    const appName  = p.state?.app?.name || "Untitled app";
+    return `
+      <div class="page-card" data-page-id="${p.id}">
+        <div class="page-card-head">
+          <div class="page-card-icon">${tplIcon}</div>
+          <div style="flex:1;min-width:0">
+            <div class="page-card-title">${escapeHtml(p.name)}</div>
+            <div class="page-card-meta">${escapeHtml(appName)} · ${tplLabel}</div>
+          </div>
+        </div>
+        <div class="page-card-meta">Updated ${updated}</div>
+        <div class="page-card-id">${p.id}</div>
+        <div class="page-card-actions">
+          <button class="btn btn-sm" data-act="edit" data-id="${p.id}">Edit</button>
+          <button class="btn btn-sm" data-act="duplicate" data-id="${p.id}">Duplicate</button>
+          <button class="btn btn-sm" data-act="copy-id" data-id="${p.id}">Copy ID</button>
+          <button class="btn btn-sm" data-act="download" data-id="${p.id}">Download HTML</button>
+          <button class="btn btn-sm btn-danger" data-act="delete" data-id="${p.id}" style="margin-left:auto">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join("")}</div>`;
+
+  // Card-level click → edit
+  container.querySelectorAll(".page-card").forEach(card=>{
+    card.addEventListener("click", e=>{
+      if (e.target.closest("[data-act]")) return;  // let action buttons fire their own
+      loadPage(card.getAttribute("data-page-id"));
+    });
+  });
+
+  // Action buttons
+  container.querySelectorAll("[data-act]").forEach(btn=>{
+    btn.addEventListener("click", e=>{
+      e.stopPropagation();
+      const id  = btn.getAttribute("data-id");
+      const act = btn.getAttribute("data-act");
+      if (act === "edit") loadPage(id);
+      if (act === "duplicate"){
+        PageStore.duplicate(id);
+        renderPagesList(); showToast("Duplicated");
+      }
+      if (act === "copy-id"){
+        navigator.clipboard?.writeText(id);
+        showToast("ID copied");
+      }
+      if (act === "download"){
+        const p = PageStore.get(id); if (!p) return;
+        const blob = new Blob([p.html || buildStandaloneHTML(deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), p.state))], {type:"text/html"});
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${(p.name||"page").replace(/\s+/g,"-").toLowerCase()}-skin.html`;
+        a.click();
+      }
+      if (act === "delete"){
+        if (!confirm(`Delete page "${PageStore.get(id)?.name}"?\nThis cannot be undone.`)) return;
+        PageStore.delete(id);
+        renderPagesList(); showToast("Deleted");
+        // Refresh count badge in topbar
+        $("#topbar").innerHTML = renderTopbar();
+        attachTopbarEvents();
+      }
+    });
+  });
+}
+
+function formatRelative(iso){
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60)        return "just now";
+  if (diff < 3600)      return Math.floor(diff/60) + "m ago";
+  if (diff < 86400)     return Math.floor(diff/3600) + "h ago";
+  if (diff < 86400*7)   return Math.floor(diff/86400) + "d ago";
+  return d.toLocaleDateString();
+}
+
+// Search filter
+document.addEventListener("input", e=>{
+  if (e.target && e.target.id === "pages-search") renderPagesList();
+});
+
+function deepMerge(target, source){
+  if (Array.isArray(source)) return source;
+  if (source && typeof source === "object"){
+    const out = { ...target };
+    for (const k of Object.keys(source)){
+      out[k] = (k in target) ? deepMerge(target[k], source[k]) : source[k];
+    }
+    return out;
+  }
+  return source;
+}
+
+function getHtmlLang(s){
+  return String(s.locale?.locale || "en").split(/[-_]/)[0] || "en";
+}
+
+function buildStandaloneHTML(s){
+  // Full-bleed body for standalone — sticky top/bottom nav stick to actual viewport,
+  // matching how the real Play Store mobile H5 page works.
+  const css = `
+    *{box-sizing:border-box}
+    body{margin:0;background:#fff;font-family:"Google Sans","Roboto","PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:#202124;min-height:100vh}
+    .ps{max-width:none}
+  ` + getPreviewCSS();
+  return `<!doctype html>
+<html lang="${escapeHtml(getHtmlLang(s))}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${escapeHtml(s.app.name)} — ${escapeHtml((s.ui && s.ui.appInfoTitle) || DEFAULT_STATE.ui.appInfoTitle)}</title>
+<meta name="theme-color" content="${escapeHtml(s.theme.primary)}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>${css}</style>
+</head>
+<body>
+<div class="ps">${buildPreviewHTML(s, true)}</div>
+<script>${CAROUSEL_JS}<\/script>
+<script>${INSTALL_PROGRESS_JS}<\/script>
+${buildExternalActionScript()}
+</body>
+</html>`;
+}
+
+function buildExternalActionScript(){
+  return `<!-- Skin-only button bridge.
+External modules own install/ad attribution and can resolve a URL by defining:
+  window.LP_LINK_RESOLVER = async function(action, button){ return "https://..."; }
+or:
+  window.LP_LINKS = { install: "https://..." }
+If no URL is returned, this template dispatches a cancelable "lp:action" event.
+-->
+<script>
+(function(){
+  var btn = document.getElementById('ps-install-btn');
+  if (!btn) return;
+
+  function runProgress(done){
+    var hasProgress = btn.getAttribute('data-progress') === '1';
+    var ms = parseInt(btn.getAttribute('data-progress-ms') || '0', 10);
+    var label = btn.getAttribute('data-progress-text') || '';
+    if (hasProgress && ms > 0 && window.__psInstallProgress){
+      window.__psInstallProgress(btn, ms, label, done);
+    } else {
+      done();
+    }
+  }
+
+  function openUrl(url){
+    if (url && url !== '#') window.location.href = url;
+  }
+
+  btn.addEventListener('click', function(e){
+    e.preventDefault();
+    var action = btn.getAttribute('data-lp-action') || 'install';
+    runProgress(function(){
+      try {
+        var result = null;
+        if (typeof window.LP_LINK_RESOLVER === 'function'){
+          result = window.LP_LINK_RESOLVER(action, btn);
+        } else if (window.LP_LINKS && window.LP_LINKS[action]){
+          result = window.LP_LINKS[action];
+        }
+        if (result && typeof result.then === 'function'){
+          result.then(openUrl).catch(function(){});
+        } else if (result) {
+          openUrl(result);
+        } else {
+          window.dispatchEvent(new CustomEvent('lp:action', { detail: { action: action, button: btn } }));
+        }
+      } catch (_) {
+        window.dispatchEvent(new CustomEvent('lp:action', { detail: { action: action, button: btn } }));
+      }
+    });
+  });
+})();
+<\/script>`;
+}
+
+function getPreviewCSS(){
+  // pull the .ps* rules out of this generator's stylesheet
+  const sheet = [...document.styleSheets].find(ss=>{
+    try { return ss.cssRules && [...ss.cssRules].some(r=>r.selectorText && r.selectorText.includes(".ps")); }
+    catch(e){ return false; }
+  });
+  if (!sheet) return "";
+  return [...sheet.cssRules]
+    .filter(r=>r.cssText && (
+      r.cssText.startsWith(".ps") || r.cssText.startsWith(":root") ||
+      r.cssText.includes(".ps ")  || r.cssText.includes(".ps-")
+    ))
+    .map(r=>r.cssText).join("\n");
+}
+
+/* ===========================================================
+   9. Boot — start at the Pages list
+   =========================================================== */
+showView("list");
+</script>
+</body>
+</html>

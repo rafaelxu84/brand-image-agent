@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Image Tool Directory</title>
+    <link rel="stylesheet" href="../styles.css?v=20260529-2" />
+    <style>
+      .directory-shell {
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .directory-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 18px 0 24px;
+      }
+
+      .directory-head h1 {
+        font-size: 34px;
+      }
+
+      .tool-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .tool-card {
+        min-height: 220px;
+        border: 1px solid var(--line);
+        background: rgba(24, 29, 23, 0.94);
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        color: var(--text);
+        text-decoration: none;
+      }
+
+      .tool-card:hover {
+        border-color: var(--accent);
+      }
+
+      .tool-card strong {
+        font-size: 21px;
+        line-height: 1.1;
+      }
+
+      .tool-card span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .tool-card small {
+        margin-top: auto;
+        color: var(--accent);
+        font-weight: 800;
+      }
+
+      @media (max-width: 900px) {
+        .directory-head,
+        .tool-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .directory-head {
+          display: grid;
+          align-items: start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="directory-shell">
+      <header class="directory-head">
+        <div>
+          <p class="eyebrow">Tool Directory</p>
+          <h1>Image production tools</h1>
+        </div>
+        <a href="../" class="hosted-link">Back to Live Cover</a>
+      </header>
+
+      <section class="tool-grid" aria-label="Image tools">
+        <a class="tool-card" href="./live.html">
+          <p class="eyebrow">Live</p>
+          <strong>Live Cover Agent</strong>
+          <span>Single-session cover generation with AI/canvas output, manual logo placement, and ZIP export.</span>
+          <small>Open live tool</small>
+        </a>
+
+        <a class="tool-card" href="./hosted.html">
+          <p class="eyebrow">Blob Batch</p>
+          <strong>Hosted Offline Batch</strong>
+          <span>Upload many source images to Vercel Blob, submit OpenAI Batch jobs, close the page, and collect results later.</span>
+          <small>Open hosted batch</small>
+        </a>
+
+        <a class="tool-card" href="./play-store-page-generator.html">
+          <p class="eyebrow">Page Tool</p>
+          <strong>Play Store Page Generator</strong>
+          <span>Your existing image/page generator tool, now stored under the same project directory.</span>
+          <small>Open page generator</small>
+        </a>
+      </section>
+    </main>
+  </body>
+</html>
