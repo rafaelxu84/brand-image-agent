@@ -257,6 +257,29 @@ async function previewLogoBatchFile(file = state.logoBatchFiles[0]) {
   showOutput(item);
 }
 
+async function previewCurrentSourceWithLogo() {
+  const file = state.files[state.selectedIndex];
+  if (!file) return false;
+  const output = await generateCanvasOutput(file, false, {
+    size: DESIGN_SIZE,
+    protectArtwork: true
+  });
+  showOutput({
+    ...output,
+    name: `${output.name}-logo-preview`
+  });
+  return true;
+}
+
+async function ensureLogoPreviewTarget() {
+  if (state.selectedOutput) return true;
+  if (state.logoBatchFiles[0]) {
+    await previewLogoBatchFile(state.logoBatchFiles[0]);
+    return true;
+  }
+  return previewCurrentSourceWithLogo();
+}
+
 async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   const sourceUrl = await fileToDataUrl(file);
   const sourceImg = await loadImage(sourceUrl);
@@ -329,7 +352,11 @@ function selectImage(index) {
   fileToDataUrl(file).then((url) => {
     els.sourcePreview.src = url;
   });
-  generateCanvasOutput(file, true).catch(() => {});
+  if (state.logo.image) {
+    previewCurrentSourceWithLogo().catch(() => generateCanvasOutput(file, true).catch(() => {}));
+  } else {
+    generateCanvasOutput(file, true).catch(() => {});
+  }
 }
 
 function showOutput(item) {
@@ -760,11 +787,13 @@ els.logoInput.addEventListener("change", async (event) => {
     state.logo = { dataUrl, image, name: file.name };
     els.logoName.textContent = file.name;
     updateLogoButtons();
-    if (!state.selectedOutput && state.logoBatchFiles[0]) {
-      await previewLogoBatchFile(state.logoBatchFiles[0]);
-    }
+    const hasPreviewTarget = await ensureLogoPreviewTarget();
     await refreshBrandedPreview();
-    setStatus("Transparent logo loaded. Drag it on the preview or adjust position and size.");
+    setStatus(
+      hasPreviewTarget
+        ? "Transparent logo is composited on the preview. Adjust position and size, then start batch export."
+        : "Transparent logo loaded. Upload or select a cover to preview placement before starting."
+    );
   } catch (error) {
     setStatus(error.message, true);
   }
