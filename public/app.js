@@ -244,6 +244,19 @@ async function refreshBrandedPreview() {
   els.aiPreview.src = await composeLogoDataUrl(state.selectedOutput.outputUrl);
 }
 
+async function previewLogoBatchFile(file = state.logoBatchFiles[0]) {
+  if (!file) return;
+  const outputUrl = await fileToDataUrl(file);
+  const item = {
+    name: file.name.replace(/\.[^.]+$/, ""),
+    sourceUrl: outputUrl,
+    outputUrl,
+    width: DESIGN_SIZE.width,
+    height: DESIGN_SIZE.height
+  };
+  showOutput(item);
+}
+
 async function generateCanvasOutput(file, previewOnly = false, options = {}) {
   const sourceUrl = await fileToDataUrl(file);
   const sourceImg = await loadImage(sourceUrl);
@@ -747,19 +760,34 @@ els.logoInput.addEventListener("change", async (event) => {
     state.logo = { dataUrl, image, name: file.name };
     els.logoName.textContent = file.name;
     updateLogoButtons();
+    if (!state.selectedOutput && state.logoBatchFiles[0]) {
+      await previewLogoBatchFile(state.logoBatchFiles[0]);
+    }
     await refreshBrandedPreview();
-    setStatus("Logo loaded. Adjust position, then download ZIP with logo.");
+    setStatus("Transparent logo loaded. Drag it on the preview or adjust position and size.");
   } catch (error) {
     setStatus(error.message, true);
   }
 });
 
-els.logoBatchInput.addEventListener("change", (event) => {
+els.logoBatchInput.addEventListener("change", async (event) => {
   state.logoBatchFiles = Array.from(event.target.files || []);
   els.logoBatchCount.textContent = state.logoBatchFiles.length
     ? `${state.logoBatchFiles.length} finished cover(s) selected`
     : "No finished covers selected";
   updateLogoButtons();
+  try {
+    if (state.logoBatchFiles[0]) {
+      await previewLogoBatchFile(state.logoBatchFiles[0]);
+      setStatus(
+        state.logo.image
+          ? "First uploaded cover is in preview. Drag the transparent logo or adjust size, then batch export."
+          : "First uploaded cover is in preview. Upload a transparent logo next."
+      );
+    }
+  } catch (error) {
+    setStatus(error.message, true);
+  }
 });
 
 for (const input of [els.logoX, els.logoY, els.logoWidth, els.logoOpacity]) {
