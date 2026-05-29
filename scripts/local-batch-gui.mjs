@@ -44,6 +44,29 @@ async function readJson(req) {
 
 function argList(config) {
   const isOpenAIBatch = config.mode === "batch-api";
+  const isLogoOnly = config.mode === "logo-only";
+  if (isLogoOnly) {
+    const args = [
+      path.join(rootDir, "scripts/local-logo-batch.mjs"),
+      "--input",
+      config.input,
+      "--output",
+      config.output,
+      "--logo",
+      config.logo,
+      "--x",
+      String(config.logoX ?? 40),
+      "--y",
+      String(config.logoY ?? 430),
+      "--width",
+      String(config.logoWidth ?? 160),
+      "--opacity",
+      String((Number(config.logoOpacity) || 100) / 100)
+    ];
+    if (config.force) args.push("--force");
+    if (config.dryRun) args.push("--dry-run");
+    return args;
+  }
   const args = [
     path.join(rootDir, isOpenAIBatch ? "scripts/local-batch-api-worker.mjs" : "scripts/local-batch-worker.mjs"),
     "--input",
@@ -69,6 +92,27 @@ function argList(config) {
 
 async function readManifestSummary(outputDir) {
   if (!outputDir) return null;
+  const logoManifestPath = path.join(outputDir, "_logo_manifest.json");
+  if (await fileExists(logoManifestPath)) {
+    try {
+      const manifest = JSON.parse(await fs.readFile(logoManifestPath, "utf8"));
+      const records = Object.values(manifest.files || {});
+      return {
+        total: records.length,
+        completed: records.filter((item) => item.status === "completed").length,
+        failed: records.filter((item) => item.status === "failed").length,
+        running: records.filter((item) => item.status === "running").length,
+        updatedAt: manifest.updatedAt || manifest.createdAt || null,
+        failedItems: Object.entries(manifest.files || {})
+          .filter(([, item]) => item.status === "failed")
+          .slice(0, 50)
+          .map(([name, item]) => ({ name, error: item.error || "" }))
+      };
+    } catch {
+      return null;
+    }
+  }
+
   const batchManifestPath = path.join(outputDir, "_batch_manifest.json");
   if (await fileExists(batchManifestPath)) {
     try {
@@ -124,9 +168,18 @@ function startJob(config) {
   if (!config.input || !config.output) {
     throw new Error("Input folder and output folder are required.");
   }
+  if (config.mode === "logo-only" && !config.logo) {
+    throw new Error("Logo file is required for Logo-only batch mode.");
+  }
 
   logs.length = 0;
-  addLog(config.mode === "batch-api" ? "Starting OpenAI Batch API worker..." : "Starting local live worker...");
+  addLog(
+    config.mode === "batch-api"
+      ? "Starting OpenAI Batch API worker..."
+      : config.mode === "logo-only"
+        ? "Starting local logo batch worker..."
+        : "Starting local live worker..."
+  );
   const env = { ...process.env };
   if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
   const child = spawn(process.execPath, argList(config), {
@@ -178,6 +231,7 @@ async function pickPath(kind) {
   const scripts = {
     input: 'POSIX path of (choose folder with prompt "Choose the source image folder")',
     output: 'POSIX path of (choose folder with prompt "Choose the output folder")',
+    logo: 'POSIX path of (choose file with prompt "Choose the transparent logo file")',
   };
   if (!scripts[kind]) throw new Error("Unknown picker type.");
 
@@ -236,24 +290,30 @@ const html = String.raw`<!doctype html>
           <select id="mode">
             <option value="batch-api" selected>OpenAI Batch API - lowest cost</option>
             <option value="live">Live local requests - immediate</option>
+            <option value="logo-only">Logo-only batch - no AI</option>
           </select>
         </label>
         <label>Source image folder <span class="path-row"><input id="input" placeholder="/Users/rafa/Downloads/source-images" /><button id="pickInput" class="secondary" type="button">Browse</button></span></label>
         <label>Output folder <span class="path-row"><input id="output" placeholder="/Users/rafa/Downloads/cover-output" /><button id="pickOutput" class="secondary" type="button">Browse</button></span></label>
-        <label>OpenAI API key <input id="apiKey" type="password" placeholder="Optional if exported in terminal" /></label>
-        <label>Brand name <input id="brand" placeholder="Pragmatic Play" /></label>
-        <label>Quality
+        <label class="ai-row">OpenAI API key <input id="apiKey" type="password" placeholder="Optional if exported in terminal" /></label>
+        <label class="ai-row">Brand name <input id="brand" placeholder="Pragmatic Play" /></label>
+        <label class="ai-row">Quality
           <select id="quality">
             <option value="low">Low - draft</option>
             <option value="medium" selected>Medium - balanced</option>
             <option value="high">High - final</option>
           </select>
         </label>
+        <label class="logo-row">Logo file <span class="path-row"><input id="logo" placeholder="/Users/rafa/Downloads/logo.png" /><button id="pickLogo" class="secondary" type="button">Browse</button></span></label>
+        <label class="logo-row">Logo X <input id="logoX" type="number" value="40" /></label>
+        <label class="logo-row">Logo Y <input id="logoY" type="number" value="430" /></label>
+        <label class="logo-row">Logo width <input id="logoWidth" type="number" min="1" value="160" /></label>
+        <label class="logo-row">Logo opacity % <input id="logoOpacity" type="number" min="0" max="100" value="100" /></label>
         <label class="live-row">Concurrency <input id="concurrency" type="number" min="1" max="4" value="1" /></label>
         <label class="live-row">Delay ms <input id="delayMs" type="number" min="0" value="1500" /></label>
         <label class="batch-row">Batch chunk size <input id="chunkSize" type="number" min="1" max="500" value="100" /></label>
         <label class="batch-row">Poll seconds <input id="pollSeconds" type="number" min="10" value="60" /></label>
-        <label>Extra instructions <textarea id="instructions" rows="4"></textarea></label>
+        <label class="ai-row">Extra instructions <textarea id="instructions" rows="4"></textarea></label>
         <label><span><input id="retryFailed" type="checkbox" /> Retry failed only</span></label>
         <label><span><input id="force" type="checkbox" /> Regenerate all</span></label>
         <label class="batch-row"><span><input id="noWait" type="checkbox" /> Submit only, collect later</span></label>
@@ -262,7 +322,7 @@ const html = String.raw`<!doctype html>
           <button id="start">Start</button>
           <button id="stop" class="danger">Stop</button>
         </div>
-        <p class="hint">Tip: use OpenAI Batch API for 600+ images. It writes progress to _batch_manifest.json and can resume/collect later. No logo is added in this version.</p>
+        <p class="hint">Tip: use OpenAI Batch API for 600+ images. After AI output is ready, switch to Logo-only batch, choose that output folder as the source, choose a new output folder, and press Start.</p>
       </aside>
       <section>
         <div class="stats">
@@ -276,7 +336,7 @@ const html = String.raw`<!doctype html>
       </section>
     </main>
     <script>
-      const ids = ["mode","input","output","apiKey","brand","quality","concurrency","delayMs","chunkSize","pollSeconds","instructions","retryFailed","force","noWait","dryRun"];
+      const ids = ["mode","input","output","apiKey","brand","quality","logo","logoX","logoY","logoWidth","logoOpacity","concurrency","delayMs","chunkSize","pollSeconds","instructions","retryFailed","force","noWait","dryRun"];
       const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
       const logs = document.getElementById("logs");
       const state = document.getElementById("state");
@@ -292,8 +352,11 @@ const html = String.raw`<!doctype html>
       }
       function syncModeFields() {
         const isBatch = el.mode.value === "batch-api";
+        const isLogoOnly = el.mode.value === "logo-only";
         for (const node of document.querySelectorAll(".batch-row")) node.classList.toggle("hidden", !isBatch);
-        for (const node of document.querySelectorAll(".live-row")) node.classList.toggle("hidden", isBatch);
+        for (const node of document.querySelectorAll(".live-row")) node.classList.toggle("hidden", isBatch || isLogoOnly);
+        for (const node of document.querySelectorAll(".ai-row")) node.classList.toggle("hidden", isLogoOnly);
+        for (const node of document.querySelectorAll(".logo-row")) node.classList.toggle("hidden", !isLogoOnly);
       }
       el.mode.addEventListener("change", () => {
         localStorage.setItem("batch.mode", el.mode.value);
@@ -305,9 +368,14 @@ const html = String.raw`<!doctype html>
           mode: el.mode.value,
           input: el.input.value.trim(),
           output: el.output.value.trim(),
+          logo: el.logo.value.trim(),
           apiKey: el.apiKey.value.trim(),
           brand: el.brand.value.trim(),
           quality: el.quality.value,
+          logoX: Number(el.logoX.value || 40),
+          logoY: Number(el.logoY.value || 430),
+          logoWidth: Number(el.logoWidth.value || 160),
+          logoOpacity: Number(el.logoOpacity.value || 100),
           concurrency: Number(el.concurrency.value || 1),
           delayMs: Number(el.delayMs.value || 1500),
           chunkSize: Number(el.chunkSize.value || 100),
@@ -337,6 +405,7 @@ const html = String.raw`<!doctype html>
       }
       document.getElementById("pickInput").onclick = () => pick("input", "input");
       document.getElementById("pickOutput").onclick = () => pick("output", "output");
+      document.getElementById("pickLogo").onclick = () => pick("logo", "logo");
       document.getElementById("start").onclick = async () => {
         try { await post("/api/start", payload()); await refresh(); }
         catch (error) { alert(error.message); }
