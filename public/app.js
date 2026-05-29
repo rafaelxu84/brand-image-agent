@@ -23,6 +23,8 @@ const els = {
   logoInput: document.querySelector("#logoInput"),
   logoName: document.querySelector("#logoName"),
   removeLogoWhite: document.querySelector("#removeLogoWhite"),
+  logoBgTolerance: document.querySelector("#logoBgTolerance"),
+  logoBgToleranceValue: document.querySelector("#logoBgToleranceValue"),
   logoBatchInput: document.querySelector("#logoBatchInput"),
   logoBatchCount: document.querySelector("#logoBatchCount"),
   logoX: document.querySelector("#logoX"),
@@ -185,6 +187,7 @@ function updateLogoControlLabels() {
   els.logoYValue.textContent = `${Math.round(settings.y)}px`;
   els.logoWidthValue.textContent = `${Math.round(settings.width)}px`;
   els.logoOpacityValue.textContent = `${Math.round(settings.opacity * 100)}%`;
+  els.logoBgToleranceValue.textContent = String(els.logoBgTolerance.value || 48);
 }
 
 function updateLogoButtons() {
@@ -272,18 +275,97 @@ async function removeWhiteLogoBackground(dataUrl) {
 
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-  for (let index = 0; index < data.length; index += 4) {
+  const width = canvas.width;
+  const height = canvas.height;
+  const tolerance = Number(els.logoBgTolerance.value || 48);
+  const visited = new Uint8Array(width * height);
+  const queue = [];
+
+  function pixelIndex(x, y) {
+    return y * width + x;
+  }
+
+  function dataIndex(x, y) {
+    return pixelIndex(x, y) * 4;
+  }
+
+  function rgbAt(x, y) {
+    const index = dataIndex(x, y);
+    return [data[index], data[index + 1], data[index + 2], data[index + 3]];
+  }
+
+  const cornerSamples = [
+    rgbAt(0, 0),
+    rgbAt(width - 1, 0),
+    rgbAt(0, height - 1),
+    rgbAt(width - 1, height - 1)
+  ].filter((pixel) => pixel[3] > 0);
+  const background = cornerSamples.length
+    ? cornerSamples.reduce(
+        (sum, pixel) => [sum[0] + pixel[0], sum[1] + pixel[1], sum[2] + pixel[2]],
+        [0, 0, 0]
+      ).map((value) => value / cornerSamples.length)
+    : [255, 255, 255];
+
+  function isBackgroundLike(x, y) {
+    const index = dataIndex(x, y);
     const r = data[index];
     const g = data[index + 1];
     const b = data[index + 2];
     const a = data[index + 3];
-    if (a === 0) continue;
+    if (a === 0) return true;
 
+    const dr = r - background[0];
+    const dg = g - background[1];
+    const db = b - background[2];
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
     const whiteness = Math.min(r, g, b);
     const colorSpread = Math.max(r, g, b) - whiteness;
-    if (whiteness > 235 && colorSpread < 24) {
-      const alpha = Math.max(0, Math.min(a, (255 - whiteness) * 8));
-      data[index + 3] = alpha;
+    return distance <= tolerance || (whiteness > 220 - tolerance * 0.25 && colorSpread < 38 + tolerance * 0.2);
+  }
+
+  function push(x, y) {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const index = pixelIndex(x, y);
+    if (visited[index]) return;
+    visited[index] = 1;
+    if (isBackgroundLike(x, y)) queue.push([x, y]);
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    push(x, 0);
+    push(x, height - 1);
+  }
+  for (let y = 0; y < height; y += 1) {
+    push(0, y);
+    push(width - 1, y);
+  }
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const [x, y] = queue[cursor];
+    data[dataIndex(x, y) + 3] = 0;
+    push(x + 1, y);
+    push(x - 1, y);
+    push(x, y + 1);
+    push(x, y - 1);
+  }
+
+  const originalAlpha = new Uint8Array(width * height);
+  for (let index = 0; index < width * height; index += 1) {
+    originalAlpha[index] = data[index * 4 + 3];
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const index = pixelIndex(x, y);
+      if (originalAlpha[index] === 0) continue;
+      const nearTransparent =
+        originalAlpha[pixelIndex(x + 1, y)] === 0 ||
+        originalAlpha[pixelIndex(x - 1, y)] === 0 ||
+        originalAlpha[pixelIndex(x, y + 1)] === 0 ||
+        originalAlpha[pixelIndex(x, y - 1)] === 0;
+      if (nearTransparent && isBackgroundLike(x, y)) {
+        data[index * 4 + 3] = Math.min(data[index * 4 + 3], 80);
+      }
     }
   }
 
@@ -880,11 +962,17 @@ els.removeLogoWhite.addEventListener("change", () => {
     .then(() => {
       setStatus(
         els.removeLogoWhite.checked
-          ? "White logo background removal is on. Check the preview, then adjust position and export."
+          ? "Logo edge background removal is on. Adjust tolerance if the preview still shows a plate."
           : "Using the original logo alpha channel."
       );
     })
     .catch((error) => setStatus(error.message, true));
+});
+
+els.logoBgTolerance.addEventListener("input", () => {
+  updateLogoControlLabels();
+  if (!els.removeLogoWhite.checked) return;
+  updateLogoWhiteRemoval().catch((error) => setStatus(error.message, true));
 });
 
 els.logoBatchInput.addEventListener("change", async (event) => {

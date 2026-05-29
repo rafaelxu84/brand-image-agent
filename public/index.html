@@ -70,7 +70,11 @@
             </label>
             <label class="check-field">
               <input id="removeLogoWhite" type="checkbox" />
-              <span>Remove white logo background</span>
+              <span>Remove logo background from edges</span>
+            </label>
+            <label class="field range-field">
+              <span>Background tolerance <strong id="logoBgToleranceValue">48</strong></span>
+              <input id="logoBgTolerance" type="range" min="10" max="110" value="48" />
             </label>
             <label class="dropzone compact" id="logoBatchDrop">
               <input id="logoBatchInput" type="file" accept="image/*" multiple />
@@ -138,6 +142,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260529-6" type="module"></script>
+    <script src="./app.js?v=20260530-1" type="module"></script>
   </body>
 </html>
