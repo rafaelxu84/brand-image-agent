@@ -81,6 +81,51 @@ function fileToDataUrl(file) {
   });
 }
 
+async function normalizeLogoFile(file) {
+  let bitmap = null;
+  if ("createImageBitmap" in window) {
+    bitmap = await createImageBitmap(file, {
+      colorSpaceConversion: "none",
+      premultiplyAlpha: "none"
+    }).catch(() => null);
+  }
+
+  if (!bitmap) {
+    const fallbackUrl = await fileToDataUrl(file);
+    bitmap = await loadImage(fallbackUrl);
+  }
+
+  const width = bitmap.width || bitmap.naturalWidth;
+  const height = bitmap.height || bitmap.naturalHeight;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  canvas.width = width;
+  canvas.height = height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(bitmap, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  let transparent = 0;
+  let translucent = 0;
+  for (let index = 3; index < imageData.data.length; index += 4) {
+    const alpha = imageData.data[index];
+    if (alpha === 0) transparent += 1;
+    else if (alpha < 255) translucent += 1;
+  }
+
+  bitmap.close?.();
+  const pixels = width * height;
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    alpha: {
+      transparent,
+      translucent,
+      pixels,
+      transparentPct: pixels ? Math.round(((transparent + translucent) / pixels) * 100) : 0
+    }
+  };
+}
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -213,6 +258,7 @@ function updateLogoOverlay() {
   const settings = logoSettings();
   els.logoOverlay.src = logoDisplayUrl();
   els.logoOverlay.hidden = false;
+  els.logoOverlay.style.backgroundColor = "transparent";
   els.logoOverlay.style.left = `${(settings.x / DESIGN_SIZE.width) * 100}%`;
   els.logoOverlay.style.top = `${(settings.y / DESIGN_SIZE.height) * 100}%`;
   els.logoOverlay.style.width = `${(settings.width / DESIGN_SIZE.width) * 100}%`;
@@ -938,9 +984,17 @@ els.logoInput.addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
-    const dataUrl = await fileToDataUrl(file);
+    const normalized = await normalizeLogoFile(file);
+    const dataUrl = normalized.dataUrl;
     const image = await loadImage(dataUrl);
-    state.logo = { dataUrl, image, name: file.name, processedDataUrl: "", processedImage: null };
+    state.logo = {
+      dataUrl,
+      image,
+      name: file.name,
+      alpha: normalized.alpha,
+      processedDataUrl: "",
+      processedImage: null
+    };
     els.logoName.textContent = file.name;
     updateLogoButtons();
     await updateLogoWhiteRemoval();
@@ -949,8 +1003,8 @@ els.logoInput.addEventListener("change", async (event) => {
     updateLogoOverlay();
     setStatus(
       hasPreviewTarget
-        ? "Transparent logo is composited on the preview. Adjust position and size, then start batch export."
-        : "Transparent logo loaded. Upload or select a cover to preview placement before starting."
+        ? `Logo loaded with ${normalized.alpha.transparentPct}% transparent/translucent pixels. Adjust position and size, then start batch export.`
+        : `Logo loaded with ${normalized.alpha.transparentPct}% transparent/translucent pixels. Upload or select a cover to preview placement before starting.`
     );
   } catch (error) {
     setStatus(error.message, true);
