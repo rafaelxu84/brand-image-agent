@@ -12,7 +12,7 @@
         <aside class="panel controls" aria-label="Controls">
           <div class="brand-block">
             <p class="eyebrow">Brand Image Agent</p>
-            <h1>Batch portrait expander</h1>
+            <h1>Logo batch composer</h1>
             <nav class="tool-switcher" aria-label="Tool directory">
               <a href="./tools/" class="active">Tool directory</a>
               <a href="./hosted.html">Online delayed batch</a>
@@ -27,7 +27,7 @@
 
           <label class="dropzone" id="imageDrop">
             <input id="imageInput" type="file" accept="image/*" multiple />
-            <span>Upload source images</span>
+            <span>Upload cover images</span>
             <strong id="imageCount">No images selected</strong>
           </label>
 
@@ -68,6 +68,7 @@
               <span>Upload transparent logo (PNG/WebP alpha preserved)</span>
               <strong id="logoName">No logo selected</strong>
             </label>
+            <p class="helper">Adjust the logo on the preview, then apply that exact placement to every uploaded cover.</p>
             <label class="check-field">
               <input id="removeLogoWhite" type="checkbox" />
               <span>Remove logo background from edges</span>
@@ -75,11 +76,6 @@
             <label class="field range-field">
               <span>Background tolerance <strong id="logoBgToleranceValue">48</strong></span>
               <input id="logoBgTolerance" type="range" min="10" max="110" value="48" />
-            </label>
-            <label class="dropzone compact" id="logoBatchDrop">
-              <input id="logoBatchInput" type="file" accept="image/*" multiple />
-              <span>Optional: upload finished covers for logo-only batch</span>
-              <strong id="logoBatchCount">No finished covers selected</strong>
             </label>
             <label class="field range-field">
               <span>Logo X <strong id="logoXValue">40px</strong></span>
@@ -97,8 +93,8 @@
               <span>Opacity <strong id="logoOpacityValue">100%</strong></span>
               <input id="logoOpacity" type="range" min="20" max="100" value="100" />
             </label>
-            <button id="downloadLogoZipBtn" type="button" class="ghost" disabled>Download ZIP with logo</button>
-            <button id="downloadUploadedLogoZipBtn" type="button" class="ghost" disabled>Batch logo uploaded covers</button>
+            <button id="applyLogoBatchBtn" type="button" disabled>Apply logo to all uploaded images</button>
+            <button id="downloadPressedLogoZipBtn" type="button" class="ghost" disabled>Download pressed-logo ZIP</button>
           </div>
 
           <div class="actions">
@@ -142,6 +138,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=20260530-3" type="module"></script>
+    <script src="./app.js?v=20260530-4" type="module"></script>
   </body>
 </html>

@@ -235,6 +235,13 @@ textarea {
   margin: 0;
 }
 
+.helper {
+  margin: -2px 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .range-field span {
   display: flex;
   align-items: center;

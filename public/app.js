@@ -2,8 +2,9 @@ const state = {
   files: [],
   selectedIndex: 0,
   outputs: [],
+  logoOutputs: [],
+  outputMode: "",
   selectedOutput: null,
-  logoBatchFiles: [],
   logo: {
     dataUrl: "",
     image: null,
@@ -25,8 +26,6 @@ const els = {
   removeLogoWhite: document.querySelector("#removeLogoWhite"),
   logoBgTolerance: document.querySelector("#logoBgTolerance"),
   logoBgToleranceValue: document.querySelector("#logoBgToleranceValue"),
-  logoBatchInput: document.querySelector("#logoBatchInput"),
-  logoBatchCount: document.querySelector("#logoBatchCount"),
   logoX: document.querySelector("#logoX"),
   logoY: document.querySelector("#logoY"),
   logoWidth: document.querySelector("#logoWidth"),
@@ -35,8 +34,8 @@ const els = {
   logoYValue: document.querySelector("#logoYValue"),
   logoWidthValue: document.querySelector("#logoWidthValue"),
   logoOpacityValue: document.querySelector("#logoOpacityValue"),
-  downloadLogoZipBtn: document.querySelector("#downloadLogoZipBtn"),
-  downloadUploadedLogoZipBtn: document.querySelector("#downloadUploadedLogoZipBtn"),
+  applyLogoBatchBtn: document.querySelector("#applyLogoBatchBtn"),
+  downloadPressedLogoZipBtn: document.querySelector("#downloadPressedLogoZipBtn"),
   canvasBtn: document.querySelector("#canvasBtn"),
   batchBtn: document.querySelector("#batchBtn"),
   aiBtn: document.querySelector("#aiBtn"),
@@ -58,7 +57,6 @@ const DESIGN_SIZE = { width: 400, height: 533 };
 const DESIGN_FOOTER_HEIGHT = 116;
 const DESIGN_TITLE_MAX_WIDTH = 360;
 const DESIGN_TITLE_CENTER_Y = Math.round(DESIGN_SIZE.height * 0.618);
-const LOGO_ZIP_CHUNK_SIZE = 1000;
 
 if (isStaticDemo) {
   els.aiBtn.disabled = true;
@@ -236,8 +234,8 @@ function updateLogoControlLabels() {
 }
 
 function updateLogoButtons() {
-  els.downloadLogoZipBtn.disabled = !state.outputs.length || !state.logo.image;
-  els.downloadUploadedLogoZipBtn.disabled = !state.logoBatchFiles.length || !state.logo.image;
+  els.applyLogoBatchBtn.disabled = !state.files.length || !state.logo.image;
+  els.downloadPressedLogoZipBtn.disabled = !state.logoOutputs.length;
 }
 
 function logoDisplayUrl() {
@@ -245,7 +243,7 @@ function logoDisplayUrl() {
 }
 
 function hasLogoPreviewBase() {
-  return Boolean(state.selectedOutput || state.files[state.selectedIndex] || state.logoBatchFiles[0]);
+  return Boolean(state.selectedOutput || state.files[state.selectedIndex]);
 }
 
 function updateLogoOverlay() {
@@ -281,9 +279,14 @@ function moveLogoFromPointer(event) {
 
   els.logoX.value = Math.round(clamp(x, 0, DESIGN_SIZE.width - settings.width));
   els.logoY.value = Math.round(clamp(y, 0, DESIGN_SIZE.height - logoHeight));
+  const cleared = clearPressedLogoResults("Logo placement changed. Apply logo to all uploaded images again before downloading.");
   updateLogoControlLabels();
   updateLogoOverlay();
-  refreshBrandedPreview().catch(() => {});
+  if (cleared) {
+    previewCurrentSourceWithLogo().catch(() => {});
+  } else {
+    refreshBrandedPreview().catch(() => {});
+  }
 }
 
 async function composeLogoDataUrl(outputUrl) {
@@ -442,39 +445,23 @@ async function refreshBrandedPreview() {
   updateLogoOverlay();
 }
 
-async function previewLogoBatchFile(file = state.logoBatchFiles[0]) {
-  if (!file) return;
-  const outputUrl = await fileToDataUrl(file);
-  const item = {
-    name: file.name.replace(/\.[^.]+$/, ""),
-    sourceUrl: outputUrl,
-    outputUrl,
-    width: DESIGN_SIZE.width,
-    height: DESIGN_SIZE.height
-  };
-  showOutput(item);
-}
-
 async function previewCurrentSourceWithLogo() {
   const file = state.files[state.selectedIndex];
   if (!file) return false;
-  const output = await generateCanvasOutput(file, false, {
-    size: DESIGN_SIZE,
-    protectArtwork: true
-  });
+  const sourceUrl = await fileToDataUrl(file);
+  const outputUrl = await resizeDataUrl(sourceUrl);
   showOutput({
-    ...output,
-    name: `${output.name}-logo-preview`
+    name: `${file.name.replace(/\.[^.]+$/, "")}-logo-preview`,
+    sourceUrl,
+    outputUrl,
+    width: DESIGN_SIZE.width,
+    height: DESIGN_SIZE.height
   });
   return true;
 }
 
 async function ensureLogoPreviewTarget() {
   if (state.selectedOutput) return true;
-  if (state.logoBatchFiles[0]) {
-    await previewLogoBatchFile(state.logoBatchFiles[0]);
-    return true;
-  }
   return previewCurrentSourceWithLogo();
 }
 
@@ -753,80 +740,67 @@ function downloadOutputsZip() {
   }
 }
 
-async function downloadLogoOutputsZip() {
-  try {
-    if (!state.outputs.length) throw new Error("Generate at least one cover first.");
-    if (!state.logo.image) throw new Error("Upload a logo first.");
-
-    await downloadLogoItemsAsZip({
-      items: state.outputs,
-      outputUrlForItem: (item) => item.outputUrl,
-      nameForItem: (item, index) => item.name || `cover-${index + 1}`,
-      filenamePrefix: "igaming-covers-logo",
-      statusLabel: "Adding logo"
-    });
-  } catch (error) {
-    setStatus(error.message, true);
+function clearPressedLogoResults(message = "") {
+  if (!state.logoOutputs.length) return false;
+  state.logoOutputs = [];
+  if (state.outputMode === "logo") {
+    state.outputs = [];
+    state.selectedOutput = null;
+    renderResults();
+  } else {
+    updateLogoButtons();
   }
+  if (message) setStatus(message);
+  return true;
 }
 
-async function downloadUploadedLogoBatchZip() {
+async function applyLogoToUploadedImages() {
   try {
-    if (!state.logoBatchFiles.length) throw new Error("Upload finished covers first.");
+    if (!state.files.length) throw new Error("Upload cover images first.");
     if (!state.logo.image) throw new Error("Upload a logo first.");
 
-    await downloadLogoItemsAsZip({
-      items: state.logoBatchFiles,
-      outputUrlForItem: (file) => fileToDataUrl(file),
-      nameForItem: (file, index) => file.name || `cover-${index + 1}`,
-      filenamePrefix: "uploaded-covers-logo",
-      statusLabel: "Batch logo"
-    });
-  } catch (error) {
-    setStatus(error.message, true);
-  }
-}
+    state.logoOutputs = [];
+    state.outputs = [];
+    state.outputMode = "logo";
+    renderResults();
 
-async function downloadLogoItemsAsZip({ items, outputUrlForItem, nameForItem, filenamePrefix, statusLabel }) {
-  const totalParts = Math.ceil(items.length / LOGO_ZIP_CHUNK_SIZE);
-  let processed = 0;
-
-  for (let partIndex = 0; partIndex < totalParts; partIndex += 1) {
-    const chunk = items.slice(partIndex * LOGO_ZIP_CHUNK_SIZE, (partIndex + 1) * LOGO_ZIP_CHUNK_SIZE);
-    const usedNames = new Map();
-    const files = [];
-
-    for (const [chunkIndex, item] of chunk.entries()) {
-      const globalIndex = partIndex * LOGO_ZIP_CHUNK_SIZE + chunkIndex;
-      processed += 1;
-      setStatus(`${statusLabel} ${processed}/${items.length}${totalParts > 1 ? ` · ZIP ${partIndex + 1}/${totalParts}` : ""}...`);
-      const sourceUrl = await outputUrlForItem(item);
-      const brandedUrl = await composeLogoDataUrl(sourceUrl);
-      const { bytes } = dataUrlToBytes(brandedUrl);
-      const baseName = sanitizeFilename(nameForItem(item, globalIndex));
-      const count = usedNames.get(baseName) || 0;
-      usedNames.set(baseName, count + 1);
-      const suffix = count ? `-${count + 1}` : "";
-      files.push({
-        name: `${String(globalIndex + 1).padStart(3, "0")}-${baseName}${suffix}-logo.png`,
-        bytes
-      });
-      if (processed % 12 === 0) await nextFrame();
+    for (let index = 0; index < state.files.length; index += 1) {
+      const file = state.files[index];
+      setStatus(`Applying logo ${index + 1}/${state.files.length}...`);
+      const sourceUrl = await fileToDataUrl(file);
+      const baseUrl = await resizeDataUrl(sourceUrl);
+      const outputUrl = await composeLogoDataUrl(baseUrl);
+      const item = {
+        name: `${file.name.replace(/\.[^.]+$/, "")}-logo`,
+        sourceUrl,
+        outputUrl,
+        width: DESIGN_SIZE.width,
+        height: DESIGN_SIZE.height,
+        logoApplied: true
+      };
+      state.logoOutputs.push(item);
+      state.outputs.push(item);
+      if ((index + 1) % 12 === 0) {
+        renderResults();
+        await nextFrame();
+      }
     }
 
-    const blob = createZip(files);
-    const url = URL.createObjectURL(blob);
-    const partSuffix = totalParts > 1 ? `-part-${String(partIndex + 1).padStart(2, "0")}` : "";
-    downloadImage(url, `${filenamePrefix}-${dateStamp()}${partSuffix}.zip`);
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-    await nextFrame();
+    renderResults();
+    if (state.logoOutputs[0]) showOutput(state.logoOutputs[0]);
+    updateLogoButtons();
+    setStatus(`Logo applied to ${state.logoOutputs.length} uploaded image(s). Ready to download.`);
+  } catch (error) {
+    setStatus(error.message, true);
   }
+}
 
-  setStatus(
-    totalParts > 1
-      ? `Packed ${items.length} cover(s) with logo into ${totalParts} ZIP files.`
-      : `Packed ${items.length} cover(s) with logo into ZIP.`
-  );
+function downloadPressedLogoZip() {
+  if (!state.logoOutputs.length) {
+    setStatus("Apply logo to uploaded images first.", true);
+    return;
+  }
+  downloadOutputsZip();
 }
 
 async function generateBatch() {
@@ -835,6 +809,8 @@ async function generateBatch() {
 
     setStatus(`Generating ${state.files.length} canvas image(s)...`);
     state.outputs = [];
+    state.logoOutputs = [];
+    state.outputMode = "generated";
     for (const file of state.files) {
       const output = await generateCanvasOutput(file);
       state.outputs.push(output);
@@ -857,6 +833,8 @@ async function expandSelected() {
 
     setStatus("Expanding selected image...");
     const output = await generateCanvasOutput(file);
+    state.logoOutputs = [];
+    state.outputMode = "generated";
     state.outputs.unshift(output);
     renderResults();
     showOutput(output);
@@ -932,6 +910,8 @@ async function generateAiSelected() {
     if (!file) throw new Error("Select a source image first.");
 
     const output = await generateAiForFile(file);
+    state.logoOutputs = [];
+    state.outputMode = "generated";
     state.outputs.unshift(output);
     renderResults();
     showOutput(state.outputs[0]);
@@ -953,6 +933,8 @@ async function generateAiBatch() {
     if (!state.files.length) throw new Error("Upload at least one source image.");
 
     state.outputs = [];
+    state.logoOutputs = [];
+    state.outputMode = "generated";
     for (let index = 0; index < state.files.length; index += 1) {
       setStatus(`AI cover ${index + 1}/${state.files.length}...`);
       const output = await generateAiForFile(state.files[index]);
@@ -974,6 +956,8 @@ async function generateAiBatch() {
 els.imageInput.addEventListener("change", (event) => {
   state.files = Array.from(event.target.files || []);
   state.outputs = [];
+  state.logoOutputs = [];
+  state.outputMode = "";
   state.selectedOutput = null;
   els.imageCount.textContent = state.files.length ? `${state.files.length} image(s) selected` : "No images selected";
   renderResults();
@@ -996,6 +980,7 @@ els.logoInput.addEventListener("change", async (event) => {
       processedImage: null
     };
     els.logoName.textContent = file.name;
+    clearPressedLogoResults();
     updateLogoButtons();
     await updateLogoWhiteRemoval();
     const hasPreviewTarget = await ensureLogoPreviewTarget();
@@ -1003,7 +988,7 @@ els.logoInput.addEventListener("change", async (event) => {
     updateLogoOverlay();
     setStatus(
       hasPreviewTarget
-        ? `Logo loaded with ${normalized.alpha.transparentPct}% transparent/translucent pixels. Adjust position and size, then start batch export.`
+        ? `Logo loaded with ${normalized.alpha.transparentPct}% transparent/translucent pixels. Adjust position and size, then apply it to all uploaded images.`
         : `Logo loaded with ${normalized.alpha.transparentPct}% transparent/translucent pixels. Upload or select a cover to preview placement before starting.`
     );
   } catch (error) {
@@ -1012,6 +997,7 @@ els.logoInput.addEventListener("change", async (event) => {
 });
 
 els.removeLogoWhite.addEventListener("change", () => {
+  clearPressedLogoResults();
   updateLogoWhiteRemoval()
     .then(() => {
       setStatus(
@@ -1026,35 +1012,20 @@ els.removeLogoWhite.addEventListener("change", () => {
 els.logoBgTolerance.addEventListener("input", () => {
   updateLogoControlLabels();
   if (!els.removeLogoWhite.checked) return;
+  clearPressedLogoResults();
   updateLogoWhiteRemoval().catch((error) => setStatus(error.message, true));
-});
-
-els.logoBatchInput.addEventListener("change", async (event) => {
-  state.logoBatchFiles = Array.from(event.target.files || []);
-  els.logoBatchCount.textContent = state.logoBatchFiles.length
-    ? `${state.logoBatchFiles.length} finished cover(s) selected`
-    : "No finished covers selected";
-  updateLogoButtons();
-  updateLogoOverlay();
-  try {
-    if (state.logoBatchFiles[0]) {
-      await previewLogoBatchFile(state.logoBatchFiles[0]);
-      setStatus(
-        state.logo.image
-          ? "First uploaded cover is in preview. Drag the transparent logo or adjust size, then batch export."
-          : "First uploaded cover is in preview. Upload a transparent logo next."
-      );
-    }
-  } catch (error) {
-    setStatus(error.message, true);
-  }
 });
 
 for (const input of [els.logoX, els.logoY, els.logoWidth, els.logoOpacity]) {
   input.addEventListener("input", () => {
     updateLogoControlLabels();
+    const cleared = clearPressedLogoResults("Logo placement changed. Apply logo to all uploaded images again before downloading.");
     updateLogoOverlay();
-    refreshBrandedPreview().catch(() => {});
+    if (cleared) {
+      previewCurrentSourceWithLogo().catch(() => {});
+    } else {
+      refreshBrandedPreview().catch(() => {});
+    }
   });
 }
 
@@ -1086,5 +1057,5 @@ els.batchBtn.addEventListener("click", generateBatch);
 els.aiBtn.addEventListener("click", generateAiSelected);
 els.aiBatchBtn.addEventListener("click", generateAiBatch);
 els.downloadAllBtn.addEventListener("click", downloadOutputsZip);
-els.downloadLogoZipBtn.addEventListener("click", downloadLogoOutputsZip);
-els.downloadUploadedLogoZipBtn.addEventListener("click", downloadUploadedLogoBatchZip);
+els.applyLogoBatchBtn.addEventListener("click", applyLogoToUploadedImages);
+els.downloadPressedLogoZipBtn.addEventListener("click", downloadPressedLogoZip);
