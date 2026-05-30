@@ -28,11 +28,11 @@ const els = {
   logoBgToleranceValue: document.querySelector("#logoBgToleranceValue"),
   logoX: document.querySelector("#logoX"),
   logoY: document.querySelector("#logoY"),
-  logoWidth: document.querySelector("#logoWidth"),
+  logoHeight: document.querySelector("#logoHeight"),
   logoOpacity: document.querySelector("#logoOpacity"),
   logoXValue: document.querySelector("#logoXValue"),
   logoYValue: document.querySelector("#logoYValue"),
-  logoWidthValue: document.querySelector("#logoWidthValue"),
+  logoHeightValue: document.querySelector("#logoHeightValue"),
   logoOpacityValue: document.querySelector("#logoOpacityValue"),
   applyLogoBatchBtn: document.querySelector("#applyLogoBatchBtn"),
   downloadPressedLogoZipBtn: document.querySelector("#downloadPressedLogoZipBtn"),
@@ -219,16 +219,22 @@ function logoSettings() {
   return {
     x: Number(els.logoX.value || 0),
     y: Number(els.logoY.value || 0),
-    width: Number(els.logoWidth.value || 160),
+    height: Number(els.logoHeight.value || 70),
     opacity: Number(els.logoOpacity.value || 100) / 100
   };
+}
+
+function logoDrawSize(logo, settings = logoSettings()) {
+  const height = Math.max(1, Number(settings.height) || 70);
+  const width = height * (logo.naturalWidth / logo.naturalHeight);
+  return { width, height };
 }
 
 function updateLogoControlLabels() {
   const settings = logoSettings();
   els.logoXValue.textContent = `${Math.round(settings.x)}px`;
   els.logoYValue.textContent = `${Math.round(settings.y)}px`;
-  els.logoWidthValue.textContent = `${Math.round(settings.width)}px`;
+  els.logoHeightValue.textContent = `${Math.round(settings.height)}px`;
   els.logoOpacityValue.textContent = `${Math.round(settings.opacity * 100)}%`;
   els.logoBgToleranceValue.textContent = String(els.logoBgTolerance.value || 48);
 }
@@ -254,12 +260,14 @@ function updateLogoOverlay() {
   }
 
   const settings = logoSettings();
+  const size = logoDrawSize(state.logo.image, settings);
   els.logoOverlay.src = logoDisplayUrl();
   els.logoOverlay.hidden = false;
   els.logoOverlay.style.backgroundColor = "transparent";
   els.logoOverlay.style.left = `${(settings.x / DESIGN_SIZE.width) * 100}%`;
   els.logoOverlay.style.top = `${(settings.y / DESIGN_SIZE.height) * 100}%`;
-  els.logoOverlay.style.width = `${(settings.width / DESIGN_SIZE.width) * 100}%`;
+  els.logoOverlay.style.width = "auto";
+  els.logoOverlay.style.height = `${(size.height / DESIGN_SIZE.height) * 100}%`;
   els.logoOverlay.style.opacity = String(settings.opacity);
 }
 
@@ -273,12 +281,12 @@ function moveLogoFromPointer(event) {
   if (!rect.width || !rect.height) return;
 
   const settings = logoSettings();
-  const logoHeight = settings.width * (state.logo.image.naturalHeight / state.logo.image.naturalWidth);
-  const x = ((event.clientX - rect.left) / rect.width) * DESIGN_SIZE.width - settings.width / 2;
-  const y = ((event.clientY - rect.top) / rect.height) * DESIGN_SIZE.height - logoHeight / 2;
+  const logoSize = logoDrawSize(state.logo.image, settings);
+  const x = ((event.clientX - rect.left) / rect.width) * DESIGN_SIZE.width - logoSize.width / 2;
+  const y = ((event.clientY - rect.top) / rect.height) * DESIGN_SIZE.height - logoSize.height / 2;
 
-  els.logoX.value = Math.round(clamp(x, 0, DESIGN_SIZE.width - settings.width));
-  els.logoY.value = Math.round(clamp(y, 0, DESIGN_SIZE.height - logoHeight));
+  els.logoX.value = Math.round(clamp(x, 0, DESIGN_SIZE.width - logoSize.width));
+  els.logoY.value = Math.round(clamp(y, 0, DESIGN_SIZE.height - logoSize.height));
   const cleared = clearPressedLogoResults("Logo placement changed. Apply logo to all uploaded images again before downloading.");
   updateLogoControlLabels();
   updateLogoOverlay();
@@ -301,8 +309,7 @@ async function composeLogoDataUrl(outputUrl) {
   ctx.drawImage(base, 0, 0, DESIGN_SIZE.width, DESIGN_SIZE.height);
 
   const logo = state.logo.processedImage || state.logo.image;
-  const width = Math.min(settings.width, DESIGN_SIZE.width);
-  const height = width * (logo.naturalHeight / logo.naturalWidth);
+  const { width, height } = logoDrawSize(logo, settings);
   const x = Math.max(-width, Math.min(DESIGN_SIZE.width, settings.x));
   const y = Math.max(-height, Math.min(DESIGN_SIZE.height, settings.y));
 
@@ -1016,7 +1023,7 @@ els.logoBgTolerance.addEventListener("input", () => {
   updateLogoWhiteRemoval().catch((error) => setStatus(error.message, true));
 });
 
-for (const input of [els.logoX, els.logoY, els.logoWidth, els.logoOpacity]) {
+for (const input of [els.logoX, els.logoY, els.logoHeight, els.logoOpacity]) {
   input.addEventListener("input", () => {
     updateLogoControlLabels();
     const cleared = clearPressedLogoResults("Logo placement changed. Apply logo to all uploaded images again before downloading.");
