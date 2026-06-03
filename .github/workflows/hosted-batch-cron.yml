@@ -16,6 +16,10 @@ jobs:
             code="$(printf '%s' "$response" | tail -n 1)"
             body="$(printf '%s' "$response" | sed '$d')"
             printf '%s\n' "$body"
+            if printf '%s' "$body" | grep -q '"paused":true'; then
+              echo "hosted-cron is paused; exiting without retrying."
+              exit 0
+            fi
             if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
               echo "hosted-cron returned HTTP $code"
               exit 1

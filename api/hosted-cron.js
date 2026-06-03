@@ -219,6 +219,11 @@ export default async function handler(req, res) {
     await writeIndex(index);
     json(res, 200, { ok: true, processed, limit, touched, cleaned: cleaned.removed, cleanupFailed: cleaned.failed });
   } catch (error) {
-    json(res, 400, { error: error.message || "Hosted cron failed." });
+    const message = error.message || "Hosted cron failed.";
+    if (/Vercel Blob: This store has been suspended/i.test(message)) {
+      json(res, 200, { ok: false, paused: true, error: message });
+      return;
+    }
+    json(res, 400, { error: message });
   }
 }
