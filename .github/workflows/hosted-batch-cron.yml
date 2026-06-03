@@ -12,6 +12,12 @@ jobs:
       - name: Poll hosted batch collector
         run: |
           for i in 1 2 3; do
-            curl -fsS "https://brand-image-agent.vercel.app/api/hosted-cron?limit=8&secret=${{ secrets.HOSTED_CRON_SECRET }}"
-            echo
+            response="$(curl -sS -w '\n%{http_code}' "https://brand-image-agent.vercel.app/api/hosted-cron?limit=8&secret=${{ secrets.HOSTED_CRON_SECRET }}")"
+            code="$(printf '%s' "$response" | tail -n 1)"
+            body="$(printf '%s' "$response" | sed '$d')"
+            printf '%s\n' "$body"
+            if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+              echo "hosted-cron returned HTTP $code"
+              exit 1
+            fi
           done

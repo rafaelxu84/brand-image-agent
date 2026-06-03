@@ -13,6 +13,8 @@ import {
   writeManifest
 } from "./hosted-shared.js";
 
+const COLLECT_ERROR_LIMIT = 3;
+
 function summarize(manifest) {
   const completed = manifest.files.filter((file) => file.status === "completed").length;
   const failed = manifest.files.filter((file) => file.status === "failed").length;
@@ -32,6 +34,7 @@ function findFileForRow(manifest, batch, row, batchIndex) {
 }
 
 function batchNeedsCollection(batch) {
+  if (batch.collectFinalError) return false;
   if (!batch.completed && !["failed", "expired", "cancelled"].includes(batch.status)) return true;
   if (batch.errorFileId && !batch.errorDownloadedAt) return true;
   return false;
@@ -71,32 +74,49 @@ async function collectBatch({ apiKey, manifest, batch }) {
     const outputText = await downloadOpenAIFile(apiKey, batch.outputFileId);
     for (const line of outputText.split(/\r?\n/)) {
       if (!line.trim()) continue;
-      const row = JSON.parse(line);
-      const file = findFileForRow(manifest, batch, row, batchIndex);
-      if (!file) continue;
+      let row = null;
+      let file = null;
+      try {
+        row = JSON.parse(line);
+        file = findFileForRow(manifest, batch, row, batchIndex);
+        if (!file) continue;
 
-      if (row.error || row.response?.status_code >= 400) {
-        file.status = "failed";
-        file.error = errorMessageFromRow(row);
-        continue;
+        if (row.error || row.response?.status_code >= 400) {
+          file.status = "failed";
+          file.error = errorMessageFromRow(row);
+          continue;
+        }
+
+        const imageCall = row.response?.body?.output?.find((item) => item.type === "image_generation_call");
+        if (!imageCall?.result) {
+          file.status = "failed";
+          file.error = "OpenAI did not return an image result.";
+          continue;
+        }
+
+        const blob = await storeOutputPng({
+          jobId: manifest.id,
+          name: safeName(file.name),
+          base64: imageCall.result
+        });
+        file.status = "completed";
+        file.outputUrl = blob.url;
+        file.error = null;
+        file.completedAt = new Date().toISOString();
+      } catch (error) {
+        if (file) {
+          file.status = "failed";
+          file.error = `Collector failed while saving output: ${error.message}`;
+          file.failedAt = new Date().toISOString();
+        } else {
+          batch.collectWarnings ||= [];
+          batch.collectWarnings.push({
+            error: error.message,
+            at: new Date().toISOString(),
+            row: row?.custom_id || null
+          });
+        }
       }
-
-      const imageCall = row.response?.body?.output?.find((item) => item.type === "image_generation_call");
-      if (!imageCall?.result) {
-        file.status = "failed";
-        file.error = "OpenAI did not return an image result.";
-        continue;
-      }
-
-      const blob = await storeOutputPng({
-        jobId: manifest.id,
-        name: safeName(file.name),
-        base64: imageCall.result
-      });
-      file.status = "completed";
-      file.outputUrl = blob.url;
-      file.error = null;
-      file.completedAt = new Date().toISOString();
     }
     batch.outputDownloadedAt = new Date().toISOString();
   }
@@ -119,6 +139,26 @@ async function collectBatch({ apiKey, manifest, batch }) {
   batch.status = "completed";
   batch.completedAt ||= new Date().toISOString();
   return true;
+}
+
+function markBatchCollectionError(manifest, batch, error) {
+  batch.collectError = error.message || "Batch collection failed.";
+  batch.collectErrorAt = new Date().toISOString();
+  batch.collectAttempts = (Number(batch.collectAttempts) || 0) + 1;
+
+  if (batch.collectAttempts < COLLECT_ERROR_LIMIT) return;
+
+  batch.collectFinalError = batch.collectError;
+  batch.status = "failed";
+  batch.completed = true;
+  batch.failedAt = new Date().toISOString();
+  for (const item of batch.items || []) {
+    const file = manifest.files[item.fileIndex];
+    if (!file || file.status === "completed") continue;
+    file.status = "failed";
+    file.error = `Collector failed after ${COLLECT_ERROR_LIMIT} attempt(s): ${batch.collectFinalError}`;
+    file.failedAt = new Date().toISOString();
+  }
 }
 
 export default async function handler(req, res) {
@@ -157,7 +197,13 @@ export default async function handler(req, res) {
 
       for (const batch of pendingBatches) {
         if (processed >= limit) break;
-        await collectBatch({ apiKey, manifest, batch });
+        try {
+          await collectBatch({ apiKey, manifest, batch });
+          batch.collectError = null;
+          batch.collectAttempts = 0;
+        } catch (error) {
+          markBatchCollectionError(manifest, batch, error);
+        }
         processed += 1;
       }
       const summary = summarize(manifest);
