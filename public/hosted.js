@@ -195,6 +195,11 @@ async function markDownloaded() {
 async function submitHostedJob() {
   if (!state.files.length) throw new Error("Upload at least one source image.");
   const jobId = `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  state.jobId = jobId;
+  localStorage.setItem("hosted.jobId", state.jobId);
+  history.replaceState(null, "", `/hosted.html?jobId=${encodeURIComponent(state.jobId)}`);
+  els.jobTitle.textContent = state.jobId;
+  els.jobMeta.textContent = "Preparing uploads...";
   const accessCode = els.accessCode.value.trim();
   const uploaded = [];
   const totalSteps = state.files.length;
@@ -292,7 +297,8 @@ async function collectNow() {
   const response = await fetch(url);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Could not collect results.");
-  setStatus(`Collector ran: ${data.touched?.join(", ") || "no active jobs"}.`);
+  const touched = data.touched?.join(", ") || "no touched jobs";
+  setStatus(`Collector ran: processed ${data.processed || 0} batch(es), ${touched}.`);
   await refreshStatus();
 }
 

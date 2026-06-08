@@ -161,6 +161,26 @@ function markBatchCollectionError(manifest, batch, error) {
   }
 }
 
+function syncIndexItem(index, manifest) {
+  index.jobs ||= [];
+  let item = index.jobs.find((job) => job.id === manifest.id);
+  if (!item) {
+    item = {
+      id: manifest.id,
+      createdAt: manifest.createdAt || new Date().toISOString()
+    };
+    index.jobs.unshift(item);
+  }
+
+  const summary = summarize(manifest);
+  item.status = manifest.status;
+  item.completed = summary.completed;
+  item.failed = summary.failed;
+  item.total = summary.total;
+  item.updatedAt = new Date().toISOString();
+  return item;
+}
+
 export default async function handler(req, res) {
   try {
     const secret = req.query?.secret || req.headers["x-cron-secret"] || "";
@@ -174,22 +194,23 @@ export default async function handler(req, res) {
     const limit = Math.max(1, Math.min(25, Number(req.query?.limit) || HOSTED_MAX_COLLECT_BATCHES));
     let processed = 0;
     const touched = [];
+    const jobsToVisit = onlyJobId ? [{ id: onlyJobId }] : index.jobs || [];
 
-    for (const item of index.jobs || []) {
-      if (onlyJobId && item.id !== onlyJobId) continue;
+    for (const item of jobsToVisit) {
       if (cleaned.removed.some((job) => job.id === item.id)) continue;
       if (processed >= limit) break;
       const manifest = await readManifest(item.id);
-      if (!manifest) continue;
+      if (!manifest) {
+        if (onlyJobId) {
+          json(res, 404, { error: "Job not found.", jobId: onlyJobId });
+          return;
+        }
+        continue;
+      }
 
       const pendingBatches = manifest.batches.filter(batchNeedsCollection);
       if (!pendingBatches.length) {
-        const summary = summarize(manifest);
-        item.status = manifest.status;
-        item.completed = summary.completed;
-        item.failed = summary.failed;
-        item.total = summary.total;
-        item.updatedAt = new Date().toISOString();
+        syncIndexItem(index, manifest);
         await writeManifest(manifest);
         touched.push(item.id);
         continue;
@@ -206,12 +227,7 @@ export default async function handler(req, res) {
         }
         processed += 1;
       }
-      const summary = summarize(manifest);
-      item.status = manifest.status;
-      item.completed = summary.completed;
-      item.failed = summary.failed;
-      item.total = summary.total;
-      item.updatedAt = new Date().toISOString();
+      syncIndexItem(index, manifest);
       await writeManifest(manifest);
       touched.push(item.id);
     }
