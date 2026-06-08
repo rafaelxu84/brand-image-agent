@@ -18,6 +18,7 @@ const els = {
   refreshBtn: document.querySelector("#refreshBtn"),
   collectBtn: document.querySelector("#collectBtn"),
   retryFailedBtn: document.querySelector("#retryFailedBtn"),
+  downloadFailedSourcesBtn: document.querySelector("#downloadFailedSourcesBtn"),
   downloadZipBtn: document.querySelector("#downloadZipBtn"),
   jobTitle: document.querySelector("#jobTitle"),
   jobMeta: document.querySelector("#jobMeta"),
@@ -159,6 +160,16 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+function extensionForFile(file, response) {
+  const fromName = String(file.name || "").match(/\.[a-z0-9]+$/i)?.[0];
+  if (fromName) return fromName.toLowerCase();
+  const type = response?.headers?.get("content-type") || "";
+  if (type.includes("jpeg")) return ".jpg";
+  if (type.includes("png")) return ".png";
+  if (type.includes("webp")) return ".webp";
+  return ".png";
+}
+
 async function downloadCompletedZip() {
   const manifest = state.manifest;
   if (!manifest) throw new Error("Refresh a hosted job first.");
@@ -181,6 +192,29 @@ async function downloadCompletedZip() {
   downloadBlob(zip, `${manifest.id || "hosted-covers"}-${dateStamp()}.zip`);
   setStatus(`Packed ${zipFiles.length} completed image(s) into ZIP. Registering cleanup...`);
   await markDownloaded();
+}
+
+async function downloadFailedSourcesZip() {
+  const manifest = state.manifest;
+  if (!manifest) throw new Error("Refresh a hosted job first.");
+  const failed = manifest.files.filter((file) => file.status === "failed" && file.sourceUrl);
+  if (!failed.length) throw new Error("No failed originals to download.");
+
+  const zipFiles = [];
+  for (const [index, file] of failed.entries()) {
+    setStatus(`Downloading failed originals ${index + 1}/${failed.length}...`);
+    const response = await fetch(file.sourceUrl);
+    if (!response.ok) throw new Error(`Could not download original ${file.name}.`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    zipFiles.push({
+      name: `${String(index + 1).padStart(3, "0")}-${safeName(file.name)}-original${extensionForFile(file, response)}`,
+      bytes
+    });
+  }
+
+  const zip = createZip(zipFiles);
+  downloadBlob(zip, `${manifest.id || "hosted-covers"}-failed-originals-${dateStamp()}.zip`);
+  setStatus(`Packed ${zipFiles.length} failed original image(s) into ZIP.`);
 }
 
 async function markDownloaded() {
@@ -237,12 +271,14 @@ function renderManifest(manifest) {
   state.manifest = manifest;
   const completed = manifest.files.filter((file) => file.status === "completed").length;
   const failed = manifest.files.filter((file) => file.status === "failed").length;
+  const failedWithSources = manifest.files.filter((file) => file.status === "failed" && file.sourceUrl).length;
   const cleanupText = manifest.cleanupAfter ? ` · cleanup after ${formatDateTime(manifest.cleanupAfter)}` : "";
   els.jobTitle.textContent = manifest.id;
   els.jobMeta.textContent = `${manifest.status} · ${completed}/${manifest.files.length} completed · ${failed} failed${cleanupText}`;
   els.progress.value = manifest.files.length ? Math.round((completed / manifest.files.length) * 100) : 0;
   els.downloadZipBtn.disabled = completed === 0;
   els.retryFailedBtn.disabled = failed === 0;
+  els.downloadFailedSourcesBtn.disabled = failedWithSources === 0;
   els.results.innerHTML = "";
 
   for (const file of manifest.files) {
@@ -335,6 +371,11 @@ els.submitBtn.addEventListener("click", async () => {
 els.refreshBtn.addEventListener("click", () => refreshStatus().catch((error) => setStatus(error.message, true)));
 els.collectBtn.addEventListener("click", () => collectNow().catch((error) => setStatus(error.message, true)));
 els.retryFailedBtn.addEventListener("click", () => retryFailed().catch((error) => setStatus(error.message, true)));
+els.downloadFailedSourcesBtn.addEventListener("click", () => downloadFailedSourcesZip().catch((error) => setStatus(error.message, true)));
 els.downloadZipBtn.addEventListener("click", () => downloadCompletedZip().catch((error) => setStatus(error.message, true)));
 
-if (state.jobId) refreshStatus().catch(() => {});
+if (location.protocol === "file:") {
+  setStatus("Open the online hosted page to use buttons: https://brand-image-agent.vercel.app/hosted.html", true);
+} else if (state.jobId) {
+  refreshStatus().catch(() => {});
+}
