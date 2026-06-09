@@ -177,6 +177,17 @@ async function readJsonResponse(response) {
   }
 }
 
+function apiErrorMessage(data, fallback = "Request failed") {
+  const base = data?.error || fallback;
+  const details = [];
+  if (Array.isArray(data?.outputTypes) && data.outputTypes.length) {
+    details.push(`OpenAI output: ${data.outputTypes.join(" | ")}`);
+  }
+  if (data?.message) details.push(data.message);
+  if (data?.revisedPrompt) details.push(`Prompt: ${data.revisedPrompt}`);
+  return details.length ? `${base} ${details.join(" ")}` : base;
+}
+
 function coverRect(sourceW, sourceH, destW, destH) {
   const scale = Math.max(destW / sourceW, destH / sourceH);
   const width = sourceW * scale;
@@ -896,7 +907,7 @@ async function generateAiForFile(file) {
     body
   });
   const data = await readJsonResponse(response);
-  if (!response.ok) throw new Error(data.error || "AI generation failed.");
+  if (!response.ok) throw new Error(apiErrorMessage(data, "AI generation failed."));
 
   const finalImage = await resizeDataUrl(data.image);
   return {
