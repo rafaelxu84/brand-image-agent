@@ -876,10 +876,11 @@ async function generateAiForFile(file) {
 
   const guideText = [
     "Use the second reference image as the exact cover layout guide.",
+    "Treat this as static game-catalog artwork resizing and composition. Do not create a gambling interface, betting slip, odds board, payout promise, real-money promotion, call-to-action button, or new jackpot/winnings claim.",
     "Follow the exact 400x533 coordinate standard from the guide. Game title visual block must be scaled to nearly fill the 360px title safe width. If the title is smaller than 340px wide, enlarge it; if it is wider than 360px, shrink it. Target title width is 350-360px.",
     "Golden composition: place the visual center of the game title block around y=329px on the 400x533 canvas. Acceptable title-center range is y=305-345px. Keep title centered horizontally and highly readable.",
     "Do not add any brand logo, provider logo, watermark, footer plaque, or lower-left mark.",
-    "Keep all important source artwork visible: top text, multipliers, upper decorations, edge/corner characters, side creatures, main subject, and full game title.",
+    "Keep all important source artwork visible: top text, multipliers, upper decorations, edge/corner subjects, side subjects, main subject, and full game title.",
     "Do not zoom in or crop the original information. If space is tight, zoom out and extend the environment/background.",
     "Improve the lower mask so it feels like natural smoke, shadow, or lighting from the original image, but do not cover the title."
   ].join(" ");

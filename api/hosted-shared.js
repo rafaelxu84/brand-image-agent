@@ -48,13 +48,14 @@ export function createJobId() {
 
 export function promptText({ brandName, instructions }) {
   return [
-    "Create a premium iGaming portrait cover image from the first reference image.",
+    "Create a premium static game-catalog portrait cover image from the first reference image.",
     brandName ? `Brand name: ${brandName}.` : "Brand name is unknown.",
+    "This is a static artwork resizing and composition task for a cover thumbnail. Do not create a gambling interface, betting slip, odds board, payout promise, real-money promotion, call-to-action button, or new jackpot/winnings claim.",
     "Use the source image itself as the composition reference.",
     "Do not add any brand logo, provider logo, watermark, badge, UI label, footer plaque, or lower-left brand mark.",
     "Exact output layout: final visual is a 400px wide by 533px high canvas. The game title block must be centered and scaled to nearly fill the 360px safe width. If the title is smaller than 340px wide, enlarge it; if wider than 360px, shrink it. Target title width is 350-360px with crisp readable lettering.",
     "Golden composition rule: place the visual center of the game title block around y=329px on the 400x533 canvas. Acceptable title-center range is y=305-345px. Keep the title centered horizontally, large, exposed, and readable.",
-    "Do not crop, trim, zoom into, or cut off important original source information. Keep full game title, top multipliers, upper decorations, corner characters, side creatures, main subject, and readable text visible. If space is tight, zoom out and extend/rebuild surrounding background.",
+    "Do not crop, trim, zoom into, or cut off important original source information. Keep full game title, top multipliers, upper decorations, corner subjects, side subjects, main subject, and readable text visible. If space is tight, zoom out and extend/rebuild surrounding background.",
     "Create a cinematic lower dark/smoky/soft-gradient obstruction in the lower 14-22% that covers busy background detail but does not hide the game title.",
     "Preserve original title text as accurately as possible. Do not invent new words, buttons, UI, jackpot badges, watermarks, or borders.",
     "Make the result sharp, premium, balanced, readable, and commercially polished.",
