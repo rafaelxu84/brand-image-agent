@@ -250,7 +250,8 @@ function buildRequestBody({ model, quality, brandName, instructions, sourceFileI
         quality,
         action: "edit"
       }
-    ]
+    ],
+    tool_choice: { type: "image_generation" }
   };
 }
 

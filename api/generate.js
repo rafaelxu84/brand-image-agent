@@ -57,6 +57,19 @@ function normalizeQuality(value) {
   return ["low", "medium", "high"].includes(value) ? value : "medium";
 }
 
+function outputSummary(data) {
+  return (data?.output || [])
+    .map((item) => {
+      const text = item.content
+        ?.map((part) => part.text || part.refusal || "")
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 220);
+      return [item.type, item.status, text].filter(Boolean).join(": ");
+    })
+    .filter(Boolean);
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -121,7 +134,8 @@ export default async function handler(req, res) {
             quality: normalizeQuality(payload.quality),
             action: "edit"
           }
-        ]
+        ],
+        tool_choice: { type: "image_generation" }
       })
     });
 
@@ -138,6 +152,7 @@ export default async function handler(req, res) {
     if (!imageCall?.result) {
       res.status(502).json({
         error: "OpenAI did not return an image_generation_call result.",
+        outputTypes: outputSummary(data),
         detail: data
       });
       return;

@@ -87,7 +87,8 @@ export function buildBatchLine({ customId, model, quality, brandName, instructio
           quality,
           action: "edit"
         }
-      ]
+      ],
+      tool_choice: { type: "image_generation" }
     }
   });
 }

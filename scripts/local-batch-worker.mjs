@@ -250,7 +250,8 @@ async function callOpenAI({ apiKey, model, quality, brandName, instructions, sou
           quality,
           action: "edit"
         }
-      ]
+      ],
+      tool_choice: { type: "image_generation" }
     })
   }, { label: "OpenAI image request" });
   const data = await response.json().catch(() => null);
