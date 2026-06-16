@@ -45,6 +45,7 @@ async function readJson(req) {
 function argList(config) {
   const isOpenAIBatch = config.mode === "batch-api";
   const isLogoOnly = config.mode === "logo-only";
+  const isCanvasOnly = config.mode === "canvas-only";
   if (isLogoOnly) {
     const args = [
       path.join(rootDir, "scripts/local-logo-batch.mjs"),
@@ -81,6 +82,7 @@ function argList(config) {
     if (config.noWait) args.push("--no-wait");
   } else {
     args.push("--concurrency", String(config.concurrency || 1), "--delay-ms", String(config.delayMs || 1500));
+    if (isCanvasOnly) args.push("--canvas-only");
   }
   if (config.retryFailed) args.push("--retry-failed");
   if (config.force) args.push("--force");
@@ -178,7 +180,9 @@ function startJob(config) {
       ? "Starting OpenAI Batch API worker..."
       : config.mode === "logo-only"
         ? "Starting local logo batch worker..."
-        : "Starting local live worker..."
+        : config.mode === "canvas-only"
+          ? "Starting local canvas fallback worker..."
+          : "Starting local live worker..."
   );
   const env = { ...process.env };
   if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
@@ -290,6 +294,7 @@ const html = String.raw`<!doctype html>
           <select id="mode">
             <option value="batch-api" selected>OpenAI Batch API - lowest cost</option>
             <option value="live">Live local requests - immediate</option>
+            <option value="canvas-only">Canvas fallback - no AI</option>
             <option value="logo-only">Logo-only batch - no AI</option>
           </select>
         </label>
@@ -353,9 +358,10 @@ const html = String.raw`<!doctype html>
       function syncModeFields() {
         const isBatch = el.mode.value === "batch-api";
         const isLogoOnly = el.mode.value === "logo-only";
+        const isCanvasOnly = el.mode.value === "canvas-only";
         for (const node of document.querySelectorAll(".batch-row")) node.classList.toggle("hidden", !isBatch);
-        for (const node of document.querySelectorAll(".live-row")) node.classList.toggle("hidden", isBatch || isLogoOnly);
-        for (const node of document.querySelectorAll(".ai-row")) node.classList.toggle("hidden", isLogoOnly);
+        for (const node of document.querySelectorAll(".live-row")) node.classList.toggle("hidden", isBatch || isLogoOnly || isCanvasOnly);
+        for (const node of document.querySelectorAll(".ai-row")) node.classList.toggle("hidden", isLogoOnly || isCanvasOnly);
         for (const node of document.querySelectorAll(".logo-row")) node.classList.toggle("hidden", !isLogoOnly);
       }
       el.mode.addEventListener("change", () => {

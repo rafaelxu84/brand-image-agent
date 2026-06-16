@@ -24,6 +24,8 @@ function parseArgs(argv) {
     delayMs: 1500,
     force: false,
     retryFailed: false,
+    canvasOnly: false,
+    noCanvasFallback: false,
     dryRun: false
   };
 
@@ -37,6 +39,10 @@ function parseArgs(argv) {
       args.force = true;
     } else if (arg === "--dry-run") {
       args.dryRun = true;
+    } else if (arg === "--canvas-only") {
+      args.canvasOnly = true;
+    } else if (arg === "--no-canvas-fallback") {
+      args.noCanvasFallback = true;
     } else if (arg.startsWith("--")) {
       const key = arg.slice(2);
       const value = argv[i + 1];
@@ -69,6 +75,8 @@ Options:
   --delay-ms 1500              Pause between requests per worker
   --force                      Regenerate completed files too
   --retry-failed               Retry files previously marked failed
+  --canvas-only                Generate local 400x533 layout without calling OpenAI
+  --no-canvas-fallback         Mark refused AI edits failed instead of saving local layout fallback
   --dry-run                    List images without calling OpenAI
 `.trim();
 }
@@ -341,12 +349,30 @@ async function processOne({ filePath, args, apiKey, model, manifest, manifestPat
   };
   await writeManifest(manifestPath, manifest);
 
+  let fallbackGuideImage = null;
+
   try {
     console.log(`start: ${key}`);
     const [sourceImage, guideImage] = await Promise.all([
       imageToDataUrl(filePath, { maxSide: 1280, format: "jpeg", quality: 84 }),
       makeGuide(filePath)
     ]);
+    fallbackGuideImage = guideImage;
+    if (args.canvasOnly) {
+      const fallbackBuffer = await resizeFinalImage(guideImage);
+      await fs.writeFile(outputPath, fallbackBuffer);
+      manifest.files[key] = {
+        status: "completed",
+        source: filePath,
+        output: outputPath,
+        fallback: "canvas-only",
+        completedAt: new Date().toISOString()
+      };
+      await writeManifest(manifestPath, manifest);
+      console.log(`canvas: ${key}`);
+      return;
+    }
+
     const generated = await callOpenAI({
       apiKey,
       model,
@@ -368,6 +394,21 @@ async function processOne({ filePath, args, apiKey, model, manifest, manifestPat
     await writeManifest(manifestPath, manifest);
     console.log(`done: ${key}`);
   } catch (error) {
+    if (fallbackGuideImage && !args.noCanvasFallback) {
+      const fallbackBuffer = await resizeFinalImage(fallbackGuideImage);
+      await fs.writeFile(outputPath, fallbackBuffer);
+      manifest.files[key] = {
+        status: "completed",
+        source: filePath,
+        output: outputPath,
+        fallback: "canvas",
+        aiError: error.message,
+        completedAt: new Date().toISOString()
+      };
+      await writeManifest(manifestPath, manifest);
+      console.warn(`fallback: ${key}: saved local layout because AI failed: ${error.message}`);
+      return;
+    }
     manifest.files[key] = {
       status: "failed",
       source: filePath,
@@ -399,7 +440,7 @@ async function main() {
   args.output = path.resolve(args.output);
 
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey && !args.dryRun) throw new Error("OPENAI_API_KEY is required.");
+  if (!apiKey && !args.dryRun && !args.canvasOnly) throw new Error("OPENAI_API_KEY is required.");
   const model = process.env.OPENAI_TEXT_MODEL || "gpt-5.2";
 
   await fs.mkdir(args.output, { recursive: true });
