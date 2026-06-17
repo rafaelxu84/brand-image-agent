@@ -16,6 +16,7 @@ import {
 const COLLECT_ERROR_LIMIT = 3;
 const TERMINAL_BATCH_STATUSES = new Set(["completed", "failed", "expired", "cancelled"]);
 const STALE_BATCH_HOURS = Math.max(1, Number(process.env.HOSTED_STALE_BATCH_HOURS) || 8);
+const ZERO_PROGRESS_STALE_BATCH_HOURS = Math.max(1, Number(process.env.HOSTED_ZERO_PROGRESS_STALE_BATCH_HOURS) || 4);
 
 function summarize(manifest) {
   const completed = manifest.files.filter((file) => file.status === "completed").length;
@@ -58,12 +59,19 @@ function batchAgeHours(batch, now = new Date()) {
   return (now.getTime() - startedAt) / 36e5;
 }
 
+function staleThresholdHours(batch) {
+  const counts = batch.requestCounts || {};
+  const progressed = (counts.completed || 0) + (counts.failed || 0);
+  return progressed === 0 ? ZERO_PROGRESS_STALE_BATCH_HOURS : STALE_BATCH_HOURS;
+}
+
 function markBatchStale(manifest, batch) {
   const age = batchAgeHours(batch);
+  const threshold = staleThresholdHours(batch);
   const progress = batch.requestCounts
     ? `${batch.requestCounts.completed || 0}/${batch.requestCounts.total || batch.requestCount || 0}`
     : "unknown progress";
-  const message = `OpenAI batch stayed ${batch.status} for ${age.toFixed(1)}h (${progress}); marked stale after ${STALE_BATCH_HOURS}h so it can be retried.`;
+  const message = `OpenAI batch stayed ${batch.status} for ${age.toFixed(1)}h (${progress}); marked stale after ${threshold}h so it can be retried.`;
 
   batch.status = "failed";
   batch.completed = true;
@@ -102,7 +110,7 @@ async function collectBatch({ apiKey, manifest, batch }) {
       return false;
     }
 
-    if (batchAgeHours(batch) >= STALE_BATCH_HOURS) {
+    if (batchAgeHours(batch) >= staleThresholdHours(batch)) {
       markBatchStale(manifest, batch);
     }
 
