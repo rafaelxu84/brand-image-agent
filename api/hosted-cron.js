@@ -59,23 +59,29 @@ function batchAgeHours(batch, now = new Date()) {
   return (now.getTime() - startedAt) / 36e5;
 }
 
-function staleThresholdHours(batch) {
+function zeroProgress(batch) {
   const counts = batch.requestCounts || {};
-  const progressed = (counts.completed || 0) + (counts.failed || 0);
-  return progressed === 0 ? ZERO_PROGRESS_STALE_BATCH_HOURS : STALE_BATCH_HOURS;
+  return (counts.completed || 0) + (counts.failed || 0) === 0;
 }
 
-function markBatchStale(manifest, batch) {
+function staleThresholdHours(batch) {
+  return zeroProgress(batch) ? ZERO_PROGRESS_STALE_BATCH_HOURS : STALE_BATCH_HOURS;
+}
+
+function markBatchStale(manifest, batch, { forced = false } = {}) {
   const age = batchAgeHours(batch);
   const threshold = staleThresholdHours(batch);
   const progress = batch.requestCounts
     ? `${batch.requestCounts.completed || 0}/${batch.requestCounts.total || batch.requestCount || 0}`
     : "unknown progress";
-  const message = `OpenAI batch stayed ${batch.status} for ${age.toFixed(1)}h (${progress}); marked stale after ${threshold}h so it can be retried.`;
+  const message = forced
+    ? `OpenAI batch stayed ${batch.status} for ${age.toFixed(1)}h (${progress}); manually marked stale so it can be retried.`
+    : `OpenAI batch stayed ${batch.status} for ${age.toFixed(1)}h (${progress}); marked stale after ${threshold}h so it can be retried.`;
 
   batch.status = "failed";
   batch.completed = true;
   batch.staleAt = new Date().toISOString();
+  if (forced) batch.forceStale = true;
   batch.failedAt ||= batch.staleAt;
   batch.collectFinalError = message;
 
@@ -88,7 +94,7 @@ function markBatchStale(manifest, batch) {
   }
 }
 
-async function collectBatch({ apiKey, manifest, batch }) {
+async function collectBatch({ apiKey, manifest, batch, forceStale = false }) {
   const remote = await openaiJson(apiKey, `/batches/${batch.id}`);
   batch.status = remote.status;
   batch.outputFileId = remote.output_file_id || batch.outputFileId || null;
@@ -110,7 +116,9 @@ async function collectBatch({ apiKey, manifest, batch }) {
       return false;
     }
 
-    if (batchAgeHours(batch) >= staleThresholdHours(batch)) {
+    if (forceStale && zeroProgress(batch)) {
+      markBatchStale(manifest, batch, { forced: true });
+    } else if (batchAgeHours(batch) >= staleThresholdHours(batch)) {
       markBatchStale(manifest, batch);
     }
 
@@ -240,6 +248,7 @@ export default async function handler(req, res) {
     const index = await readIndex();
     const cleaned = await cleanupExpiredHostedJobs(index);
     const onlyJobId = req.query?.jobId || "";
+    const forceStale = req.query?.forceStale === "1" || req.query?.forceStale === "true";
     const limit = Math.max(1, Math.min(25, Number(req.query?.limit) || HOSTED_MAX_COLLECT_BATCHES));
     let processed = 0;
     const touched = [];
@@ -268,7 +277,7 @@ export default async function handler(req, res) {
       for (const batch of pendingBatches) {
         if (processed >= limit) break;
         try {
-          await collectBatch({ apiKey, manifest, batch });
+          await collectBatch({ apiKey, manifest, batch, forceStale });
           batch.collectError = null;
           batch.collectAttempts = 0;
         } catch (error) {
