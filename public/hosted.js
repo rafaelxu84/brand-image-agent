@@ -57,6 +57,14 @@ async function postJson(url, payload) {
   return data;
 }
 
+async function validateHostedSetup(accessCode) {
+  const response = await fetch(`/api/hosted-validate?code=${encodeURIComponent(accessCode)}`, {
+    cache: "no-store"
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Hosted access validation failed.");
+}
+
 function updateProgress(done, total, label) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   els.progress.value = pct;
@@ -228,13 +236,16 @@ async function markDownloaded() {
 
 async function submitHostedJob() {
   if (!state.files.length) throw new Error("Upload at least one source image.");
+  const accessCode = els.accessCode.value.trim();
+  setStatus("Checking hosted access...");
+  await validateHostedSetup(accessCode);
+
   const jobId = `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   state.jobId = jobId;
   localStorage.setItem("hosted.jobId", state.jobId);
   history.replaceState(null, "", `/hosted.html?jobId=${encodeURIComponent(state.jobId)}`);
   els.jobTitle.textContent = state.jobId;
   els.jobMeta.textContent = "Preparing uploads...";
-  const accessCode = els.accessCode.value.trim();
   const uploaded = [];
   const totalSteps = state.files.length;
   let done = 0;
@@ -362,7 +373,13 @@ els.submitBtn.addEventListener("click", async () => {
     await submitHostedJob();
     setStatus("Hosted job submitted. You can close this page now.");
   } catch (error) {
-    setStatus(error.message, true);
+    const message = String(error.message || "");
+    setStatus(
+      message.includes("client token")
+        ? "Upload token failed. Check the hosted access code and try again."
+        : message,
+      true
+    );
   } finally {
     els.submitBtn.disabled = false;
   }
